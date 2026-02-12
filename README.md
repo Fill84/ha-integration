@@ -125,7 +125,7 @@ MIT
 Deze branch bevat alleen de Home Assistant custom integratie voor HACS/custom repository.
 
 Gebruik deze branch als custom repository in HACS:
-- Voeg toe via HACS: https://github.com/<jouw-username>/<repo-naam>/tree/integratie
+- Voeg toe via HACS: https://github.com/Fill84/HA-Companion-App
 - De integratie bevindt zich in custom_components/desktop_app
 
 Zie ook hacs.json en README.md voor instructies.
