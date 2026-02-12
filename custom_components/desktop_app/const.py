@@ -45,6 +45,9 @@ COMMAND_REGISTER_SENSOR = "register_sensor"
 COMMAND_UPDATE_SENSOR_STATES = "update_sensor_states"
 COMMAND_UPDATE_REGISTRATION = "update_registration"
 
+# API update event (fired by POST /api/desktop_app/update)
+EVENT_DESKTOP_APP_UPDATE = "desktop_app_update_event"
+
 # Signal templates
 SIGNAL_SENSOR_UPDATE = f"{DOMAIN}_sensor_update_{{}}_{{}}"
 SIGNAL_SENSOR_REGISTER = f"{DOMAIN}_sensor_register_{{}}_{{}}"
