@@ -1,5 +1,7 @@
 # Desktop App - Home Assistant Custom Integration
 
+![Integration icon](icons/icon.png)
+
 A custom Home Assistant integration that enables desktop computers to send system sensor data (CPU, GPU, RAM, disk, network, battery) to Home Assistant via webhooks.
 
 ## Features

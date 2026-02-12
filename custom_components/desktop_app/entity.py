@@ -54,9 +54,8 @@ class DesktopAppEntity(RestoreEntity):
         self._sensor_unique_id = sensor_unique_id
         self._webhook_id = config_entry_data.get(ATTR_WEBHOOK_ID)
 
-        # Set optional attributes
-        if icon := sensor_data.get(ATTR_SENSOR_ICON):
-            self._attr_icon = icon
+        # Set optional attributes (default icon for desktop app entities)
+        self._attr_icon = sensor_data.get(ATTR_SENSOR_ICON) or "mdi:desktop-tower-monitor"
 
         if device_class := sensor_data.get(ATTR_SENSOR_DEVICE_CLASS):
             self._attr_device_class = device_class
