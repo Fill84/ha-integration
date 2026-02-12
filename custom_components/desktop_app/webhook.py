@@ -132,6 +132,10 @@ async def handle_register_sensor(
     devices = hass.data[DOMAIN].setdefault("registered_sensors", {})
     devices[unique_store_key] = sensor_data
 
+    # Persist to store so sensors survive HA restarts
+    from . import _async_save_store
+    await _async_save_store(hass)
+
     # Dispatch signal for dynamic entity creation
     signal = SIGNAL_SENSOR_REGISTER.format(device_id, sensor_type)
     async_dispatcher_send(hass, signal, sensor_data)

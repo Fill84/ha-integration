@@ -73,6 +73,11 @@ class DesktopAppEntity(RestoreEntity):
             ATTR_SENSOR_ATTRIBUTES, {}
         )
 
+        # Set initial state from registration data
+        initial_state = sensor_data.get(ATTR_SENSOR_STATE)
+        if initial_state is not None:
+            self._update_state(initial_state)
+
     @property
     def device_info(self):
         """Return device info linking to the registered device."""

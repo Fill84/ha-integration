@@ -57,6 +57,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         DATA_PENDING_UPDATES: {},
         DATA_STORE: store,
         DATA_API_VIEW_REGISTERED: False,
+        "registered_sensors": stored_data.get("registered_sensors", {}),
     }
 
     # Register API views directly. The "http" dependency in manifest.json
@@ -171,5 +172,6 @@ async def _async_save_store(hass: HomeAssistant) -> None:
             DATA_CONFIG_ENTRIES: hass.data[DOMAIN][DATA_CONFIG_ENTRIES],
             DATA_DEVICES: hass.data[DOMAIN][DATA_DEVICES],
             DATA_DELETED_IDS: hass.data[DOMAIN][DATA_DELETED_IDS],
+            "registered_sensors": hass.data[DOMAIN].get("registered_sensors", {}),
         }
     )

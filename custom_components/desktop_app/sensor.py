@@ -47,6 +47,9 @@ async def async_setup_entry(
     registration = entry.data
     device_id = registration[ATTR_DEVICE_ID]
 
+    # Track which unique_ids already have entities so we don't duplicate
+    known_unique_ids: set[str] = set()
+
     # Restore existing sensor entities from entity registry
     entity_registry = async_get_entity_registry(hass)
     existing_entities = []
@@ -59,6 +62,7 @@ async def async_setup_entry(
             continue
 
         unique_id = entity_entry.unique_id
+        known_unique_ids.add(unique_id)
         # Check if we have sensor data stored
         if unique_id in registered_sensors:
             sensor_data = registered_sensors[unique_id]
@@ -77,6 +81,12 @@ async def async_setup_entry(
         if sensor_data.get(ATTR_SENSOR_TYPE) != "sensor":
             return
 
+        unique_id = sensor_data.get("unique_store_key", "")
+        if unique_id in known_unique_ids:
+            _LOGGER.debug("Sensor already exists, skipping: %s", unique_id)
+            return
+        known_unique_ids.add(unique_id)
+
         _LOGGER.info(
             "Adding new sensor: %s",
             sensor_data.get(ATTR_SENSOR_UNIQUE_ID),
@@ -89,3 +99,21 @@ async def async_setup_entry(
     entry.async_on_unload(
         async_dispatcher_connect(hass, signal, _handle_sensor_register)
     )
+
+    # Check for sensors that were registered BEFORE the dispatcher listener
+    # was connected (race condition: desktop app sends register_sensor before
+    # platform setup completes).
+    new_entities = []
+    for key, sensor_data in registered_sensors.items():
+        if sensor_data.get(ATTR_DEVICE_ID) != device_id:
+            continue
+        if sensor_data.get(ATTR_SENSOR_TYPE) != "sensor":
+            continue
+        if key in known_unique_ids:
+            continue
+        known_unique_ids.add(key)
+        _LOGGER.info("Creating sensor from pre-registered data: %s", key)
+        new_entities.append(DesktopAppSensor(hass, registration, sensor_data))
+
+    if new_entities:
+        async_add_entities(new_entities)
