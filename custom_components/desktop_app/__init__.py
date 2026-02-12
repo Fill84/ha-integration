@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from homeassistant.components import webhook as webhook_component
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
@@ -103,7 +104,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     # Register webhook handler
-    hass.components.webhook.async_register(
+    webhook_component.async_register(
+        hass,
         DOMAIN,
         f"Desktop App ({registration.get(ATTR_DEVICE_NAME, device_id)})",
         webhook_id,
@@ -136,7 +138,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Unregister webhook
     if webhook_id:
-        hass.components.webhook.async_unregister(webhook_id)
+        webhook_component.async_unregister(hass, webhook_id)
         hass.data[DOMAIN][DATA_PENDING_UPDATES].pop(webhook_id, None)
 
     # Remove config entry data
