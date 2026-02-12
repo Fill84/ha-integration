@@ -6,8 +6,8 @@ import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_START, Platform
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.storage import Store
 
@@ -48,17 +48,42 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         DATA_STORE: store,
     }
 
-    # Register the HTTP registration endpoint (required for app registration)
-    if hasattr(hass, "http") and hass.http is not None:
-        hass.http.register_view(DesktopAppRegistrationView())
-        _LOGGER.info(
-            "Registered Desktop App registration endpoint at /api/desktop_app/registrations"
-        )
-    else:
-        _LOGGER.error(
-            "Cannot register Desktop App API: hass.http not available. "
-            "Check that the http integration is loaded."
-        )
+    # Register the HTTP registration endpoint (required for app registration).
+    # Try immediately; if hass.http is not ready yet (load order), register on HA start.
+    _view_registered = False
+
+    if getattr(hass, "http", None) is not None:
+        try:
+            hass.http.register_view(DesktopAppRegistrationView())
+            _view_registered = True
+            _LOGGER.info(
+                "Registered Desktop App registration endpoint at /api/desktop_app/registrations"
+            )
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.warning("Failed to register API view at setup: %s", e)
+
+    if not _view_registered:
+
+        @callback
+        def _register_view(_):
+            nonlocal _view_registered
+            if _view_registered:
+                return
+            if getattr(hass, "http", None) is None:
+                _LOGGER.error(
+                    "Cannot register Desktop App API: hass.http not available"
+                )
+                return
+            try:
+                hass.http.register_view(DesktopAppRegistrationView())
+                _view_registered = True
+                _LOGGER.info(
+                    "Registered Desktop App registration endpoint at /api/desktop_app/registrations"
+                )
+            except Exception as e:  # noqa: BLE001
+                _LOGGER.warning("Failed to register API view on start: %s", e)
+
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_START, _register_view)
 
     return True
 
