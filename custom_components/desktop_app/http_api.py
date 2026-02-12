@@ -48,6 +48,13 @@ class DesktopAppPingView(HomeAssistantView):
         return self.json_message("Desktop App integration is loaded")
 
 
+class DesktopAppPingViewWithSlash(DesktopAppPingView):
+    """Same as ping but for URL with trailing slash (e.g. curl .../ping/)."""
+
+    url = "/api/desktop_app/ping/"
+    name = "api:desktop_app:ping_slash"
+
+
 class DesktopAppRegistrationView(HomeAssistantView):
     """Handle Desktop App device registrations."""
 

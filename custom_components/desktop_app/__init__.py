@@ -31,7 +31,11 @@ from .const import (
     STORAGE_VERSION,
 )
 from .helpers import get_device_info
-from .http_api import DesktopAppPingView, DesktopAppRegistrationView
+from .http_api import (
+    DesktopAppPingView,
+    DesktopAppPingViewWithSlash,
+    DesktopAppRegistrationView,
+)
 from .webhook import handle_webhook
 
 _LOGGER = logging.getLogger(__name__)
@@ -46,6 +50,7 @@ def _register_api_view(hass: HomeAssistant) -> bool:
         return True
     try:
         hass.http.register_view(DesktopAppPingView())
+        hass.http.register_view(DesktopAppPingViewWithSlash())
         hass.http.register_view(DesktopAppRegistrationView())
         hass.data.setdefault(DOMAIN, {})[DATA_API_VIEW_REGISTERED] = True
         _LOGGER.info(
