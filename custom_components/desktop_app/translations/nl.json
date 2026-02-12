@@ -3,12 +3,11 @@
         "step": {
             "user": {
                 "title": "Desktop App",
-                "description": "Gebruik de Desktop Companion App om je apparaat te registreren. Deze integratie wordt automatisch geconfigureerd wanneer een apparaat verbinding maakt."
+                "description": "Klik op Verzenden om de Desktop App integratie te activeren. Zodra actief kunnen apparaten zich registreren via de Desktop Companion App."
             }
         },
         "abort": {
-            "use_companion_app": "Gebruik de Desktop Companion App om deze integratie in te stellen.",
-            "already_configured": "Dit apparaat is al geconfigureerd."
+            "already_configured": "De Desktop App integratie is al actief."
         }
     }
 }

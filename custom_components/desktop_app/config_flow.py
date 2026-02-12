@@ -24,9 +24,16 @@ class DesktopAppConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle manual setup (show info message)."""
+        """Handle manual setup — creates a hub entry that activates the API."""
         if user_input is not None:
-            return self.async_abort(reason="use_companion_app")
+            # Prevent duplicate hub entries
+            await self.async_set_unique_id(DOMAIN)
+            self._abort_if_unique_id_configured()
+
+            return self.async_create_entry(
+                title="Desktop App",
+                data={"is_hub": True},
+            )
 
         return self.async_show_form(
             step_id="user",

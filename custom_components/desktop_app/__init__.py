@@ -6,16 +6,9 @@ import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EVENT_HOMEASSISTANT_START, Platform
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.storage import Store
-
-try:
-    from homeassistant.setup import async_when_setup_or_start
-except ImportError:
-    async_when_setup_or_start = None  # type: ignore[assignment]
 
 from .const import (
     ATTR_DEVICE_ID,
@@ -47,31 +40,6 @@ from .webhook import handle_webhook
 _LOGGER = logging.getLogger(__name__)
 
 
-def _register_api_views(hass: HomeAssistant) -> bool:
-    """Register the Desktop App API views. Returns True if registered."""
-    if getattr(hass, "http", None) is None:
-        _LOGGER.debug("Desktop App: hass.http not yet available")
-        return False
-    domain_data = hass.data.get(DOMAIN)
-    if not domain_data:
-        return False
-    if domain_data.get(DATA_API_VIEW_REGISTERED):
-        return True
-    try:
-        hass.http.register_view(DesktopAppPingView())
-        hass.http.register_view(DesktopAppPingViewWithSlash())
-        hass.http.register_view(DesktopAppRegistrationView())
-        hass.http.register_view(DesktopAppDataView())
-        domain_data[DATA_API_VIEW_REGISTERED] = True
-        _LOGGER.info(
-            "Registered Desktop App API at /api/desktop_app/registrations, /api/desktop_app/ping, /api/desktop_app/update"
-        )
-        return True
-    except Exception as e:  # noqa: BLE001
-        _LOGGER.exception("Desktop App: failed to register API views: %s", e)
-        return False
-
-
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Set up the Desktop App integration."""
     _LOGGER.info(
@@ -90,36 +58,19 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         DATA_API_VIEW_REGISTERED: False,
     }
 
-    # Register API views when the http integration is ready (ensures hass.http and
-    # app.router exist). Fallbacks on EVENT_HOMEASSISTANT_START and a short delay
-    # in case of load-order differences.
-    async def _register_when_http_ready() -> None:
-        _register_api_views(hass)
-
-    if async_when_setup_or_start is not None:
-        async_when_setup_or_start(hass, "http", _register_when_http_ready)
-    else:
-        # Older HA: try immediately and rely on EVENT_HOMEASSISTANT_START + delay
-        _register_api_views(hass)
-
-    @callback
-    def _on_home_assistant_start(_: Any) -> None:
-        if not hass.data.get(DOMAIN, {}).get(DATA_API_VIEW_REGISTERED):
-            _register_api_views(hass)
-
-    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_START, _on_home_assistant_start)
-
-    @callback
-    def _delayed_register(_: Any) -> None:
-        if hass.data.get(DOMAIN, {}).get(DATA_API_VIEW_REGISTERED):
-            return
-        if not _register_api_views(hass):
-            _LOGGER.error(
-                "Desktop App: API views could not be registered. "
-                "Ensure custom_components/desktop_app is installed and Home Assistant was fully restarted."
-            )
-
-    async_call_later(hass, 3.0, _delayed_register)
+    # Register API views directly. The "http" dependency in manifest.json
+    # guarantees that hass.http is available at this point. Views MUST be
+    # registered here (synchronously during setup) — registering later via
+    # callbacks would fail because the aiohttp router is frozen after startup.
+    hass.http.register_view(DesktopAppPingView())
+    hass.http.register_view(DesktopAppPingViewWithSlash())
+    hass.http.register_view(DesktopAppRegistrationView())
+    hass.http.register_view(DesktopAppDataView())
+    hass.data[DOMAIN][DATA_API_VIEW_REGISTERED] = True
+    _LOGGER.info(
+        "Registered Desktop App API at /api/desktop_app/registrations, "
+        "/api/desktop_app/ping, /api/desktop_app/update"
+    )
 
     return True
 
@@ -127,6 +78,13 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Desktop App from a config entry."""
     registration = entry.data
+
+    # Hub entry — only purpose is to keep the integration loaded so the
+    # API views stay registered.  No device/webhook/platform setup needed.
+    if registration.get("is_hub"):
+        _LOGGER.info("Desktop App hub entry loaded — API views active")
+        return True
+
     device_id = registration[ATTR_DEVICE_ID]
     webhook_id = registration[ATTR_WEBHOOK_ID]
 
@@ -169,6 +127,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a Desktop App config entry."""
+    # Hub entry — nothing to tear down
+    if entry.data.get("is_hub"):
+        return True
+
     registration = entry.data
     webhook_id = registration.get(ATTR_WEBHOOK_ID)
 
