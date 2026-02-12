@@ -8,5 +8,6 @@
     ],
     "categories": [
         "integration"
-    ]
+    ],
+    "content_in_root": false
 }
