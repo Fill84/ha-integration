@@ -118,6 +118,28 @@ Content-Type: application/json
 }
 ```
 
+## Troubleshooting
+
+### "Registration failed (404 Not Found)"
+
+De 404 betekent dat het registratie-endpoint niet bereikbaar is. Controleer het volgende:
+
+1. **Integratie geïnstalleerd en HA herstart**
+   - De custom component moet in `config/custom_components/desktop_app/` staan (of via HACS geïnstalleerd zijn).
+   - Na installatie **Home Assistant volledig herstarten** (niet alleen configuratie herladen).
+
+2. **Endpoint testen**
+   - Open in de browser: `https://JOUW_HA_URL/api/desktop_app/registrations`
+   - **401 Unauthorized** = de route bestaat; je moet inloggen (de app gebruikt een token).
+   - **404 Not Found** = de integratie is niet geladen of de route is niet geregistreerd.
+
+3. **Logs controleren**
+   - Na herstart zou in de HA-log moeten staan: `Registered Desktop App registration endpoint at /api/desktop_app/registrations`.
+   - Staat daar een fout over `hass.http not available`, dan laadt de http-integratie niet goed.
+
+4. **URL in de app**
+   - Gebruik de basis-URL van HA **zonder** `/api` erachter (bijv. `https://ha.jouwdomein.nl` of `http://192.168.1.10:8123`).
+
 ## License
 
 MIT

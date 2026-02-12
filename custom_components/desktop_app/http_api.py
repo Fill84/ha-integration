@@ -8,8 +8,8 @@ from typing import Any
 
 from aiohttp.web import Request, Response
 
-from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.http import HomeAssistantView
 
 from .const import (
     ATTR_APP_VERSION,
@@ -42,6 +42,12 @@ class DesktopAppRegistrationView(HomeAssistantView):
     url = "/api/desktop_app/registrations"
     name = "api:desktop_app:registrations"
     requires_auth = True
+
+    async def get(self, request: Request) -> Response:
+        """Allow checking that the registration endpoint exists (returns 401 without auth)."""
+        return self.json_message(
+            "Desktop App registration API; use POST with device_id and device_name"
+        )
 
     async def post(self, request: Request) -> Response:
         """Handle device registration."""

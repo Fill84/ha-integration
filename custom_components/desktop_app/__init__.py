@@ -48,8 +48,17 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         DATA_STORE: store,
     }
 
-    # Register the HTTP registration endpoint
-    hass.http.register_view(DesktopAppRegistrationView)
+    # Register the HTTP registration endpoint (required for app registration)
+    if hasattr(hass, "http") and hass.http is not None:
+        hass.http.register_view(DesktopAppRegistrationView())
+        _LOGGER.info(
+            "Registered Desktop App registration endpoint at /api/desktop_app/registrations"
+        )
+    else:
+        _LOGGER.error(
+            "Cannot register Desktop App API: hass.http not available. "
+            "Check that the http integration is loaded."
+        )
 
     return True
 
