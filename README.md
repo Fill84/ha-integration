@@ -17,9 +17,18 @@ A custom Home Assistant integration that enables desktop computers to send syste
 
 ### HACS (Recommended)
 
-1. Add this repository as a custom repository in HACS
-2. Search for "Desktop App" and install
-3. Restart Home Assistant
+1. In HACS: **Integrations** → **⋮** (menu) → **Custom repositories**
+2. Add repository URL: `https://github.com/Fill84/ha-integration` en kies type **Integration**
+3. Zoek "Desktop App" of "Desktop App Companion" en klik **Download**
+4. **Herstart Home Assistant volledig** (niet alleen "Configuratie herladen")
+
+**Controleren of de integratie goed is geladen**
+
+- Na herstart: **Instellingen** → **Systeem** → **Logboeken**. Zoek naar:
+  - `Desktop App integration loading` → de integratie is geladen
+  - `Registered Desktop App API at /api/desktop_app/registrations and /api/desktop_app/ping` → de API-routes zijn actief
+- Test in de browser (geen inlog nodig): `https://JOUW_HA_URL/api/desktop_app/ping` → **200** met bericht "Desktop App integration is loaded" = integratie bereikbaar
+- Test registratie-endpoint: `https://JOUW_HA_URL/api/desktop_app/registrations` → **401** betekent dat de route werkt (token vereist)
 
 ### Manual
 
@@ -57,7 +66,14 @@ This integration is configured automatically when a Desktop Companion App connec
 | BIOS Version | sensor | Startup only |
 | Motherboard | sensor | Startup only |
 
-## API Endpoints
+## API Endpoints (details)
+
+### Ping (health check)
+
+```
+GET /api/desktop_app/ping
+```
+Geen authenticatie. Returns 200 met bericht als de integratie geladen is. Handig om te testen of de integratie bereikbaar is (ook via reverse proxy).
 
 ### Registration
 
@@ -120,6 +136,13 @@ Content-Type: application/json
 
 ## Troubleshooting
 
+### "404" on `/api/desktop_app/ping` or `/api/desktop_app/ping/`
+
+- **Trailing slash**: Both `/api/desktop_app/ping` and `/api/desktop_app/ping/` are supported. If you used another path, try one of these.
+- **Route not registered**: If you still get 404, the integration may not be loading. In **Settings → System → Logs** look for:
+  - `Registered Desktop App API at /api/desktop_app/registrations and /api/desktop_app/ping` → routes are active.
+  - If that line is missing after a full restart, the integration did not register (wrong path, or `hass.http` not ready). Ensure the integration is in `config/custom_components/desktop_app/` and do a **full** Home Assistant restart.
+
 ### "Registration failed (404 Not Found)"
 
 De 404 betekent dat het registratie-endpoint niet bereikbaar is. Controleer het volgende:
@@ -134,11 +157,26 @@ De 404 betekent dat het registratie-endpoint niet bereikbaar is. Controleer het 
    - **404 Not Found** = de integratie is niet geladen of de route is niet geregistreerd.
 
 3. **Logs controleren**
-   - Na herstart zou in de HA-log moeten staan: `Registered Desktop App registration endpoint at /api/desktop_app/registrations`.
+   - Na herstart zou in de HA-log moeten staan: `Registered Desktop App API at /api/desktop_app/registrations and /api/desktop_app/ping`.
    - Staat daar een fout over `hass.http not available`, dan laadt de http-integratie niet goed.
 
 4. **URL in de app**
    - Gebruik de basis-URL van HA **zonder** `/api` erachter (bijv. `https://ha.jouwdomein.nl` of `http://192.168.1.10:8123`).
+
+5. **Reverse proxy (nginx, Caddy, enz.)**
+   - Zorg dat het pad `/api/` naar Home Assistant wordt doorgestuurd. Ontbreekt die mapping, dan krijg je 404 op alle `/api/...`-requests.
+
+6. **Firewall**
+   - **404** = de server (HA of proxy) antwoordt maar kent de route niet → zie punten 1–5.
+   - **Geen verbinding / timeout** = vaak firewall of netwerk: zorg dat de poort van HA (bijv. 8123) of je reverse proxy vanaf de desktop-PC bereikbaar is. Windows Firewall, router of bedrijfsfirewall kunnen uitgaand verkeer blokkeren. Test in de browser op dezelfde PC: `http://JOUW_HA_IP:8123/api/desktop_app/ping`.
+
+## API Endpoints (overzicht)
+
+| Endpoint | Auth | Doel |
+|----------|------|------|
+| `GET /api/desktop_app/ping` | Nee | Controleren of de integratie geladen en bereikbaar is (geeft 200 + bericht) |
+| `POST /api/desktop_app/registrations` | Bearer token | App-registratie |
+| `POST /api/webhook/<webhook_id>` | Nee (webhook-id in pad) | Sensordata / webhook-commando’s |
 
 ## License
 
