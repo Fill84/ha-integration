@@ -18,17 +18,17 @@ A custom Home Assistant integration that enables desktop computers to send syste
 ### HACS (Recommended)
 
 1. In HACS: **Integrations** → **⋮** (menu) → **Custom repositories**
-2. Add repository URL: `https://github.com/Fill84/ha-integration` en kies type **Integration**
-3. Zoek "Desktop App" of "Desktop App Companion" en klik **Download**
-4. **Herstart Home Assistant volledig** (niet alleen "Configuratie herladen")
+2. Add repository URL: `https://github.com/Fill84/ha-integration` and choose type **Integration**
+3. Search for "Desktop App" or "Desktop App Companion" and click **Download**
+4. **Fully restart Home Assistant** (not just "Reload Configuration")
 
-**Controleren of de integratie goed is geladen**
+**Verify the integration loaded correctly**
 
-- Na herstart: **Instellingen** → **Systeem** → **Logboeken**. Zoek naar:
-  - `Desktop App integration loading` → de integratie is geladen
-  - `Registered Desktop App API at /api/desktop_app/registrations and /api/desktop_app/ping` → de API-routes zijn actief
-- Test in de browser (geen inlog nodig): `https://JOUW_HA_URL/api/desktop_app/ping` → **200** met bericht "Desktop App integration is loaded" = integratie bereikbaar
-- Test registratie-endpoint: `https://JOUW_HA_URL/api/desktop_app/registrations` → **401** betekent dat de route werkt (token vereist)
+- After restart: **Settings** → **System** → **Logs**. Look for:
+  - `Desktop App integration loading` → the integration is loaded
+  - `Registered Desktop App API at /api/desktop_app/registrations and /api/desktop_app/ping` → the API routes are active
+- Test in the browser (no login required): `https://YOUR_HA_URL/api/desktop_app/ping` → **200** with message "Desktop App integration is loaded" = integration is reachable
+- Test registration endpoint: `https://YOUR_HA_URL/api/desktop_app/registrations` → **401** means the route is working (token required)
 
 ### Manual
 
@@ -45,26 +45,28 @@ This integration is configured automatically when a Desktop Companion App connec
 
 ## Supported Sensors
 
-| Sensor | Type | Update |
-|--------|------|--------|
-| CPU Usage | sensor (%) | Interval |
-| CPU Speed | sensor (MHz) | Interval |
-| CPU Temperature | sensor (°C) | Interval |
-| CPU Model | sensor | Startup only |
-| GPU Usage | sensor (%) | Interval |
-| GPU Temperature | sensor (°C) | Interval |
-| GPU VRAM Used | sensor (GB) | Interval |
-| GPU Model | sensor | Startup only |
-| RAM Usage | sensor (%) | Interval |
-| RAM Used | sensor (GB) | Interval |
-| Disk Usage | sensor (%) per partition | Interval |
-| Network Speed | sensor (bytes/s) | Interval |
-| Battery Level | sensor (%) | Interval |
-| Battery Charging | binary_sensor | Interval |
-| OS Version | sensor | Startup only |
-| Hostname | sensor | Startup only |
-| BIOS Version | sensor | Startup only |
-| Motherboard | sensor | Startup only |
+|------------------|--------------------------|--------------|
+| Sensor           | Type                     | Update       |
+|------------------|--------------------------|--------------|
+| CPU Usage        | sensor (%)               | Interval     |
+| CPU Speed        | sensor (MHz)             | Interval     |
+| CPU Temperature  | sensor (°C)              | Interval     |
+| CPU Model        | sensor                   | Startup only |
+| GPU Usage        | sensor (%)               | Interval     |
+| GPU Temperature  | sensor (°C)              | Interval     |
+| GPU VRAM Used    | sensor (GB)              | Interval     |
+| GPU Model        | sensor                   | Startup only |
+| RAM Usage        | sensor (%)               | Interval     |
+| RAM Used         | sensor (GB)              | Interval     |
+| Disk Usage       | sensor (%) per partition | Interval     |
+| Network Speed    | sensor (bytes/s)         | Interval     |
+| Battery Level    | sensor (%)               | Interval     |
+| Battery Charging | binary_sensor            | Interval     |
+| OS Version       | sensor                   | Startup only |
+| Hostname         | sensor                   | Startup only |
+| BIOS Version     | sensor                   | Startup only |
+| Motherboard      | sensor                   | Startup only |
+|------------------|--------------------------|--------------|
 
 ## API Endpoints (details)
 
@@ -73,7 +75,7 @@ This integration is configured automatically when a Desktop Companion App connec
 ```
 GET /api/desktop_app/ping
 ```
-Geen authenticatie. Returns 200 met bericht als de integratie geladen is. Handig om te testen of de integratie bereikbaar is (ook via reverse proxy).
+No authentication required. Returns 200 with a message if the integration is loaded. Useful for testing whether the integration is reachable (also via reverse proxy).
 
 ### Registration
 
@@ -145,49 +147,49 @@ Content-Type: application/json
 
 ### "Registration failed (404 Not Found)"
 
-De 404 betekent dat het registratie-endpoint niet bereikbaar is. Controleer het volgende:
+The 404 means the registration endpoint is not reachable. Check the following:
 
-1. **Integratie geïnstalleerd en HA herstart**
-   - De custom component moet in `config/custom_components/desktop_app/` staan (of via HACS geïnstalleerd zijn).
-   - Na installatie **Home Assistant volledig herstarten** (niet alleen configuratie herladen).
+1. **Integration installed and HA restarted**
+   - The custom component must be in `config/custom_components/desktop_app/` (or installed via HACS).
+   - After installation, **fully restart Home Assistant** (not just reload configuration).
 
-2. **Endpoint testen**
-   - Open in de browser: `https://JOUW_HA_URL/api/desktop_app/registrations`
-   - **401 Unauthorized** = de route bestaat; je moet inloggen (de app gebruikt een token).
-   - **404 Not Found** = de integratie is niet geladen of de route is niet geregistreerd.
+2. **Test the endpoint**
+   - Open in the browser: `https://YOUR_HA_URL/api/desktop_app/registrations`
+   - **401 Unauthorized** = the route exists; authentication is required (the app uses a token).
+   - **404 Not Found** = the integration is not loaded or the route is not registered.
 
-3. **Logs controleren**
-   - Na herstart zou in de HA-log moeten staan: `Registered Desktop App API at /api/desktop_app/registrations and /api/desktop_app/ping`.
-   - Staat daar een fout over `hass.http not available`, dan laadt de http-integratie niet goed.
+3. **Check the logs**
+   - After restart, the HA log should contain: `Registered Desktop App API at /api/desktop_app/registrations and /api/desktop_app/ping`.
+   - If there is an error about `hass.http not available`, the HTTP integration is not loading correctly.
 
-4. **URL in de app**
-   - Gebruik de basis-URL van HA **zonder** `/api` erachter (bijv. `https://ha.jouwdomein.nl` of `http://192.168.1.10:8123`).
+4. **URL in the app**
+   - Use the base URL of HA **without** `/api` appended (e.g. `https://ha.yourdomain.com` or `http://192.168.1.10:8123`).
 
-5. **Reverse proxy (nginx, Caddy, enz.)**
-   - Zorg dat het pad `/api/` naar Home Assistant wordt doorgestuurd. Ontbreekt die mapping, dan krijg je 404 op alle `/api/...`-requests.
+5. **Reverse proxy (nginx, Caddy, etc.)**
+   - Make sure the `/api/` path is forwarded to Home Assistant. If this mapping is missing, you will get 404 on all `/api/...` requests.
 
 6. **Firewall**
-   - **404** = de server (HA of proxy) antwoordt maar kent de route niet → zie punten 1–5.
-   - **Geen verbinding / timeout** = vaak firewall of netwerk: zorg dat de poort van HA (bijv. 8123) of je reverse proxy vanaf de desktop-PC bereikbaar is. Windows Firewall, router of bedrijfsfirewall kunnen uitgaand verkeer blokkeren. Test in de browser op dezelfde PC: `http://JOUW_HA_IP:8123/api/desktop_app/ping`.
+   - **404** = the server (HA or proxy) responds but does not recognize the route → see points 1–5.
+   - **No connection / timeout** = often a firewall or network issue: make sure the HA port (e.g. 8123) or your reverse proxy is reachable from the desktop PC. Windows Firewall, router, or corporate firewall may block outgoing traffic. Test in the browser on the same PC: `http://YOUR_HA_IP:8123/api/desktop_app/ping`.
 
-## API Endpoints (overzicht)
+## API Endpoints (overview)
 
-| Endpoint | Auth | Doel |
-|----------|------|------|
-| `GET /api/desktop_app/ping` | Nee | Controleren of de integratie geladen en bereikbaar is (geeft 200 + bericht) |
-| `POST /api/desktop_app/registrations` | Bearer token | App-registratie |
-| `POST /api/webhook/<webhook_id>` | Nee (webhook-id in pad) | Sensordata / webhook-commando’s |
+| Endpoint | Auth | Purpose |
+|----------|------|---------|
+| `GET /api/desktop_app/ping` | No | Check if the integration is loaded and reachable (returns 200 + message) |
+| `POST /api/desktop_app/registrations` | Bearer token | App registration |
+| `POST /api/webhook/<webhook_id>` | No (webhook ID in path) | Sensor data / webhook commands |
 
 ## License
 
 MIT
 
-# Integratie branch README
+# Integration branch README
 
-Deze branch bevat alleen de Home Assistant custom integratie voor HACS/custom repository.
+This branch contains only the Home Assistant custom integration for HACS/custom repository.
 
-Gebruik deze branch als custom repository in HACS:
-- Voeg toe via HACS: https://github.com/Fill84/HA-Companion-App
-- De integratie bevindt zich in custom_components/desktop_app
+Use this branch as a custom repository in HACS:
+- Add via HACS: https://github.com/Fill84/HA-Companion-App
+- The integration is located in custom_components/desktop_app
 
-Zie ook hacs.json en README.md voor instructies.
+See also hacs.json and README.md for instructions.
