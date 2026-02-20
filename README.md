@@ -45,7 +45,6 @@ This integration is configured automatically when a Desktop Companion App connec
 
 ## Supported Sensors
 
-|------------------|--------------------------|--------------|
 | Sensor           | Type                     | Update       |
 |------------------|--------------------------|--------------|
 | CPU Usage        | sensor (%)               | Interval     |
@@ -66,7 +65,6 @@ This integration is configured automatically when a Desktop Companion App connec
 | Hostname         | sensor                   | Startup only |
 | BIOS Version     | sensor                   | Startup only |
 | Motherboard      | sensor                   | Startup only |
-|------------------|--------------------------|--------------|
 
 ## API Endpoints (details)
 
@@ -193,3 +191,4 @@ Use this branch as a custom repository in HACS:
 - The integration is located in custom_components/desktop_app
 
 See also hacs.json and README.md for instructions.
+
