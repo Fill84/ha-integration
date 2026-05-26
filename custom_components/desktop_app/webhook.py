@@ -7,6 +7,7 @@ from typing import Any, Callable, Coroutine
 
 from aiohttp.web import Request, Response
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
@@ -26,8 +27,8 @@ from .const import (
     COMMAND_REGISTER_SENSOR,
     COMMAND_UPDATE_REGISTRATION,
     COMMAND_UPDATE_SENSOR_STATES,
-    DATA_CONFIG_ENTRIES,
     DATA_PENDING_UPDATES,
+    DATA_REGISTERED_SENSORS,
     DOMAIN,
     SIGNAL_SENSOR_REGISTER,
     SIGNAL_SENSOR_UPDATE,
@@ -38,7 +39,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # Registry of webhook command handlers
 WEBHOOK_COMMANDS: dict[
-    str, Callable[[HomeAssistant, dict, str, dict], Coroutine[Any, Any, Response]]
+    str,
+    Callable[[HomeAssistant, ConfigEntry, str, dict], Coroutine[Any, Any, Response]],
 ] = {}
 
 
@@ -50,6 +52,18 @@ def webhook_command(command_type: str):
         return func
 
     return decorator
+
+
+def _find_entry_by_webhook(hass: HomeAssistant, webhook_id: str) -> ConfigEntry | None:
+    """Return the config entry for the given webhook_id, or None.
+
+    HA's own config_entries registry is the source of truth — we no longer
+    keep a parallel store, so there is nothing to drift out of sync with.
+    """
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.data.get(ATTR_WEBHOOK_ID) == webhook_id:
+            return entry
+    return None
 
 
 async def handle_webhook(
@@ -70,29 +84,23 @@ async def handle_webhook(
         _LOGGER.warning("Unknown webhook command type: %s", command_type)
         return error_response(f"Unknown command type: {command_type}", status=400)
 
-    # Find the config entry for this webhook
-    config_entry = None
-    for entry_id, entry_data in hass.data[DOMAIN][DATA_CONFIG_ENTRIES].items():
-        if entry_data.get(ATTR_WEBHOOK_ID) == webhook_id:
-            config_entry = entry_data
-            break
-
-    if config_entry is None:
+    entry = _find_entry_by_webhook(hass, webhook_id)
+    if entry is None:
         return error_response("Device not registered", status=410)
 
     _LOGGER.debug(
         "Handling webhook command '%s' for device %s",
         command_type,
-        config_entry.get(ATTR_DEVICE_ID, "unknown"),
+        entry.data.get(ATTR_DEVICE_ID, "unknown"),
     )
 
-    return await handler(hass, config_entry, webhook_id, data.get("data", {}))
+    return await handler(hass, entry, webhook_id, data.get("data", {}))
 
 
 @webhook_command(COMMAND_REGISTER_SENSOR)
 async def handle_register_sensor(
     hass: HomeAssistant,
-    config_entry: dict[str, Any],
+    entry: ConfigEntry,
     webhook_id: str,
     data: dict[str, Any],
 ) -> Response:
@@ -109,7 +117,7 @@ async def handle_register_sensor(
             status=400,
         )
 
-    device_id = config_entry[ATTR_DEVICE_ID]
+    device_id = entry.data[ATTR_DEVICE_ID]
     sensor_unique_id = data[ATTR_SENSOR_UNIQUE_ID]
     unique_store_key = f"{device_id}_{sensor_unique_id}"
 
@@ -129,7 +137,7 @@ async def handle_register_sensor(
     }
 
     # Store sensor registration
-    devices = hass.data[DOMAIN].setdefault("registered_sensors", {})
+    devices = hass.data[DOMAIN].setdefault(DATA_REGISTERED_SENSORS, {})
     devices[unique_store_key] = sensor_data
 
     # Persist to store so sensors survive HA restarts
@@ -153,7 +161,7 @@ async def handle_register_sensor(
 @webhook_command(COMMAND_UPDATE_SENSOR_STATES)
 async def handle_update_sensor_states(
     hass: HomeAssistant,
-    config_entry: dict[str, Any],
+    entry: ConfigEntry,
     webhook_id: str,
     data: dict[str, Any],
 ) -> Response:
@@ -162,7 +170,7 @@ async def handle_update_sensor_states(
     if not isinstance(sensor_states, list):
         return error_response("'sensors' must be a list", status=400)
 
-    device_id = config_entry[ATTR_DEVICE_ID]
+    device_id = entry.data[ATTR_DEVICE_ID]
     pending = hass.data[DOMAIN][DATA_PENDING_UPDATES].setdefault(webhook_id, {})
 
     for sensor_update in sensor_states:
@@ -197,24 +205,25 @@ async def handle_update_sensor_states(
 @webhook_command(COMMAND_UPDATE_REGISTRATION)
 async def handle_update_registration(
     hass: HomeAssistant,
-    config_entry: dict[str, Any],
+    entry: ConfigEntry,
     webhook_id: str,
     data: dict[str, Any],
 ) -> Response:
-    """Update device registration info."""
-    device_id = config_entry[ATTR_DEVICE_ID]
+    """Update device registration info (os_version, app_version, device_name).
 
-    # Update allowed fields
-    updatable_fields = ["os_version", "app_version", "device_name"]
-    for field in updatable_fields:
-        if field in data:
-            config_entry[field] = data[field]
+    Persists through HA's own config_entries API so the change survives
+    restarts and is visible to anyone using `entry.data`.
+    """
+    device_id = entry.data[ATTR_DEVICE_ID]
 
-    # Save store
-    from . import _async_save_store
+    updatable_fields = ("os_version", "app_version", "device_name")
+    updates = {k: data[k] for k in updatable_fields if k in data}
+    if not updates:
+        return webhook_response({"success": True})
 
-    await _async_save_store(hass)
+    new_data = {**entry.data, **updates}
+    hass.config_entries.async_update_entry(entry, data=new_data)
 
-    _LOGGER.info("Updated registration for device %s", device_id)
+    _LOGGER.info("Updated registration for device %s: %s", device_id, list(updates))
 
     return webhook_response({"success": True})

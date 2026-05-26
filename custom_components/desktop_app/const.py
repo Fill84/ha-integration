@@ -6,13 +6,11 @@ DOMAIN = "desktop_app"
 STORAGE_KEY = "desktop_app_registrations"
 STORAGE_VERSION = 1
 
-# Data keys
-DATA_CONFIG_ENTRIES = "config_entries"
-DATA_DEVICES = "devices"
-DATA_DELETED_IDS = "deleted_ids"
+# Data keys (runtime hass.data[DOMAIN] state — NOT persisted)
 DATA_PENDING_UPDATES = "pending_updates"
 DATA_STORE = "store"
 DATA_API_VIEW_REGISTERED = "api_view_registered"
+DATA_REGISTERED_SENSORS = "registered_sensors"
 DATA_BINARY_SENSOR = "binary_sensor"
 DATA_SENSOR = "sensor"
 

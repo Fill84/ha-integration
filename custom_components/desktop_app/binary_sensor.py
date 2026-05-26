@@ -17,6 +17,7 @@ from .const import (
     ATTR_SENSOR_STATE,
     ATTR_SENSOR_TYPE,
     ATTR_SENSOR_UNIQUE_ID,
+    DATA_REGISTERED_SENSORS,
     DOMAIN,
     SIGNAL_SENSOR_REGISTER,
 )
@@ -58,7 +59,7 @@ async def async_setup_entry(
     # Restore existing binary sensor entities from entity registry
     entity_registry = async_get_entity_registry(hass)
     existing_entities = []
-    registered_sensors = hass.data[DOMAIN].get("registered_sensors", {})
+    registered_sensors = hass.data[DOMAIN].get(DATA_REGISTERED_SENSORS, {})
 
     for entity_entry in entity_registry.entities.get_entries_for_config_entry_id(
         entry.entry_id
