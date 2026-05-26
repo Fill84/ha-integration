@@ -63,13 +63,17 @@ async def async_setup_entry(
             continue
 
         unique_id = entity_entry.unique_id
-        known_unique_ids.add(unique_id)
-        # Check if we have sensor data stored
+        # Only mark this unique_id as known when we can actually recreate the
+        # entity. If we marked it known unconditionally and the data was
+        # missing, a later register_sensor webhook would short-circuit on
+        # "already known" and leave the entity permanently orphaned (HA shows
+        # "no longer being provided").
         if unique_id in registered_sensors:
             sensor_data = registered_sensors[unique_id]
             existing_entities.append(
                 DesktopAppSensor(hass, registration, sensor_data)
             )
+            known_unique_ids.add(unique_id)
             _LOGGER.debug("Restoring sensor entity: %s", unique_id)
 
     if existing_entities:

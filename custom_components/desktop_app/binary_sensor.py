@@ -68,12 +68,14 @@ async def async_setup_entry(
             continue
 
         unique_id = entity_entry.unique_id
-        known_unique_ids.add(unique_id)
+        # Only mark known when we can recreate the entity (see sensor.py for
+        # the full reasoning — prevents "no longer being provided" orphans).
         if unique_id in registered_sensors:
             sensor_data = registered_sensors[unique_id]
             existing_entities.append(
                 DesktopAppBinarySensor(hass, registration, sensor_data)
             )
+            known_unique_ids.add(unique_id)
             _LOGGER.debug("Restoring binary sensor entity: %s", unique_id)
 
     if existing_entities:
