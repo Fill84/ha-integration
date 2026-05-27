@@ -24,6 +24,7 @@ from .const import (
     ATTR_SENSOR_UNIQUE_ID,
     ATTR_SENSOR_UNIT_OF_MEASUREMENT,
     ATTR_WEBHOOK_ID,
+    COMMAND_DEVICE_OFFLINE,
     COMMAND_REGISTER_SENSOR,
     COMMAND_UPDATE_REGISTRATION,
     COMMAND_UPDATE_SENSOR_STATES,
@@ -93,6 +94,21 @@ async def handle_webhook(
         command_type,
         entry.data.get(ATTR_DEVICE_ID, "unknown"),
     )
+
+    # Phase 3: every command except device_offline counts as a heartbeat.
+    # device_offline is the graceful "I'm going down" signal — recording it
+    # as activity would defeat its purpose (the periodic timer would then
+    # flip the device back online on its next tick).
+    if command_type != COMMAND_DEVICE_OFFLINE:
+        from homeassistant.util import dt as dt_util
+        from .const import DATA_LAST_SEEN, SIGNAL_AVAILABILITY_UPDATE
+        device_id = entry.data[ATTR_DEVICE_ID]
+        hass.data[DOMAIN].setdefault(DATA_LAST_SEEN, {})[device_id] = dt_util.utcnow()
+        async_dispatcher_send(
+            hass,
+            SIGNAL_AVAILABILITY_UPDATE.format(device_id),
+            True,
+        )
 
     return await handler(hass, entry, webhook_id, data.get("data", {}))
 

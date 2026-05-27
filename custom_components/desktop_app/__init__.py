@@ -19,6 +19,7 @@ from .const import (
     ATTR_APP_VERSION,
     ATTR_WEBHOOK_ID,
     DATA_API_VIEW_REGISTERED,
+    DATA_LAST_SEEN,
     DATA_PENDING_UPDATES,
     DATA_REGISTERED_SENSORS,
     DATA_STORE,
@@ -57,6 +58,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         DATA_STORE: store,
         DATA_API_VIEW_REGISTERED: False,
         DATA_REGISTERED_SENSORS: stored_data.get(DATA_REGISTERED_SENSORS, {}),
+        # Phase 3: per-device last-seen timestamps for the availability sensor
+        DATA_LAST_SEEN: {},
     }
 
     # Register API views directly. The "http" dependency in manifest.json
