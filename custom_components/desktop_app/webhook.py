@@ -267,3 +267,24 @@ async def handle_update_registration(
     _LOGGER.info("Updated registration for device %s: %s", device_id, list(updates))
 
     return webhook_response({"success": True})
+
+
+@webhook_command(COMMAND_DEVICE_OFFLINE)
+async def handle_device_offline(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    webhook_id: str,
+    data: dict[str, Any],
+) -> Response:
+    """Mark this device offline immediately (graceful shutdown signal)."""
+    from .availability import offline_signal_payload
+    from .const import SIGNAL_AVAILABILITY_UPDATE
+
+    device_id = entry.data[ATTR_DEVICE_ID]
+    async_dispatcher_send(
+        hass,
+        SIGNAL_AVAILABILITY_UPDATE.format(device_id),
+        offline_signal_payload(),
+    )
+    _LOGGER.info("Device %s flagged offline by graceful shutdown signal", device_id)
+    return webhook_response({"success": True})
