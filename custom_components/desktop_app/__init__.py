@@ -119,6 +119,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Initialize pending updates dict for this entry
     hass.data[DOMAIN][DATA_PENDING_UPDATES][webhook_id] = {}
 
+    # Phase 3: start the periodic availability check once (first entry triggers).
+    from .const import DATA_AVAILABILITY_TIMER
+    if DATA_AVAILABILITY_TIMER not in hass.data[DOMAIN]:
+        from .availability import start_availability_timer
+        hass.data[DOMAIN][DATA_AVAILABILITY_TIMER] = start_availability_timer(hass)
+
     # Forward setup to sensor and binary_sensor platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -140,6 +146,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if webhook_id:
         webhook_component.async_unregister(hass, webhook_id)
         hass.data[DOMAIN][DATA_PENDING_UPDATES].pop(webhook_id, None)
+
+    # If this was the last entry being unloaded, stop the availability timer.
+    from .const import DATA_AVAILABILITY_TIMER
+    if len(hass.config_entries.async_entries(DOMAIN)) <= 1:
+        unsub = hass.data[DOMAIN].pop(DATA_AVAILABILITY_TIMER, None)
+        if unsub is not None:
+            unsub()
 
     # Unload platforms
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

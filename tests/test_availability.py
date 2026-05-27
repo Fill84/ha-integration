@@ -36,6 +36,8 @@ def _load_availability_module():
 avail = _load_availability_module()
 is_device_online = avail.is_device_online
 timeout_threshold = avail.timeout_threshold
+evaluate_devices = avail.evaluate_devices
+offline_signal_payload = avail.offline_signal_payload
 DesktopAppAvailabilitySensor = avail.DesktopAppAvailabilitySensor
 
 
@@ -93,3 +95,30 @@ def test_availability_sensor_handle_signal_sets_state():
     assert sensor.is_on is True
     sensor._handle_update(False)
     assert sensor.is_on is False
+
+
+def test_evaluate_devices_returns_flips():
+    """Given a snapshot, returns (device_id, new_is_online) tuples for any
+    devices whose state should change."""
+    now = datetime(2026, 5, 27, 12, 0, tzinfo=timezone.utc)
+    devices = {
+        "dev-fresh": now - timedelta(seconds=30),      # still online
+        "dev-stale": now - timedelta(seconds=300),     # offline now
+    }
+    update_intervals = {"dev-fresh": 60, "dev-stale": 60}
+    current_state = {"dev-fresh": True, "dev-stale": True}
+    flips = evaluate_devices(
+        last_seen=devices,
+        update_intervals=update_intervals,
+        current_state=current_state,
+        now=now,
+    )
+    assert flips == {"dev-stale": False}
+
+
+def test_device_offline_command_marks_device_offline_immediately():
+    """When the desktop app sends device_offline, the dispatched signal
+    must carry False so the binary_sensor flips without waiting for the
+    next periodic tick."""
+    payload = offline_signal_payload()
+    assert payload is False
