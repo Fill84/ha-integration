@@ -36,6 +36,7 @@ def _load_availability_module():
 avail = _load_availability_module()
 is_device_online = avail.is_device_online
 timeout_threshold = avail.timeout_threshold
+DesktopAppAvailabilitySensor = avail.DesktopAppAvailabilitySensor
 
 
 def test_is_device_online_true_within_window():
@@ -66,3 +67,29 @@ def test_timeout_threshold_minimum_floor():
     # Very small update intervals should still allow at least ~10 seconds of
     # tolerance -- otherwise a momentary blip flips the entity offline.
     assert timeout_threshold(update_interval=1) >= 10.0
+
+
+def test_availability_sensor_initial_state_is_unavailable_until_first_seen():
+    # Until the first heartbeat arrives, is_on must be False and the
+    # entity must NOT be reported as 'unavailable' (we want a definite
+    # "offline" reading, not nothing).
+    sensor = DesktopAppAvailabilitySensor(
+        device_id="dev-1",
+        device_name="Test PC",
+        update_interval=60,
+    )
+    assert sensor.is_on is False
+    assert sensor.available is True
+    assert sensor.device_class == "connectivity"
+
+
+def test_availability_sensor_handle_signal_sets_state():
+    sensor = DesktopAppAvailabilitySensor(
+        device_id="dev-1",
+        device_name="Test PC",
+        update_interval=60,
+    )
+    sensor._handle_update(True)
+    assert sensor.is_on is True
+    sensor._handle_update(False)
+    assert sensor.is_on is False

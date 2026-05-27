@@ -124,3 +124,20 @@ async def async_setup_entry(
 
     if new_entities:
         async_add_entities(new_entities)
+
+    # Phase 3: one availability sensor per device, registered up-front
+    # regardless of dynamic sensor registrations. Always exists for the
+    # lifetime of the config entry.
+    from .availability import build_ha_availability_sensor
+    from .const import ATTR_DEVICE_NAME
+
+    device_name = registration.get(ATTR_DEVICE_NAME, device_id)
+    async_add_entities(
+        [
+            build_ha_availability_sensor(
+                device_id=device_id,
+                device_name=device_name,
+                update_interval=60,
+            )
+        ]
+    )
