@@ -111,7 +111,14 @@ class DesktopAppEntity(RestoreEntity):
 
     @callback
     def _handle_update(self, update_data: dict[str, Any]) -> None:
-        """Handle a sensor state update."""
+        """Handle a sensor state update.
+
+        Updates may also carry metadata (device_class, unit, state_class).
+        When the desktop app re-registers an existing sensor with different
+        metadata — e.g. it used to send `device_class: duration` and is now
+        sending a plain string — those fields must replace the originals,
+        including explicit ``None`` to clear a previous value.
+        """
         if ATTR_SENSOR_STATE in update_data:
             self._update_state(update_data[ATTR_SENSOR_STATE])
 
@@ -120,6 +127,19 @@ class DesktopAppEntity(RestoreEntity):
 
         if ATTR_SENSOR_ATTRIBUTES in update_data:
             self._attr_extra_state_attributes = update_data[ATTR_SENSOR_ATTRIBUTES]
+
+        # Metadata patching — only applied when the key is explicitly present
+        # in update_data (so plain state updates don't accidentally clear it).
+        if ATTR_SENSOR_DEVICE_CLASS in update_data:
+            self._attr_device_class = update_data[ATTR_SENSOR_DEVICE_CLASS]
+
+        if ATTR_SENSOR_UNIT_OF_MEASUREMENT in update_data:
+            self._attr_native_unit_of_measurement = update_data[
+                ATTR_SENSOR_UNIT_OF_MEASUREMENT
+            ]
+
+        if ATTR_SENSOR_STATE_CLASS in update_data:
+            self._attr_state_class = update_data[ATTR_SENSOR_STATE_CLASS]
 
         self.async_write_ha_state()
 

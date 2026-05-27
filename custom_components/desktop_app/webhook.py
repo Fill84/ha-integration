@@ -121,6 +121,9 @@ async def handle_register_sensor(
     sensor_unique_id = data[ATTR_SENSOR_UNIQUE_ID]
     unique_store_key = f"{device_id}_{sensor_unique_id}"
 
+    devices = hass.data[DOMAIN].setdefault(DATA_REGISTERED_SENSORS, {})
+    is_reregistration = unique_store_key in devices
+
     sensor_data = {
         ATTR_SENSOR_UNIQUE_ID: sensor_unique_id,
         ATTR_SENSOR_NAME: data[ATTR_SENSOR_NAME],
@@ -136,20 +139,41 @@ async def handle_register_sensor(
         ATTR_DEVICE_ID: device_id,
     }
 
-    # Store sensor registration
-    devices = hass.data[DOMAIN].setdefault(DATA_REGISTERED_SENSORS, {})
+    # Store sensor registration (overwrites any prior entry)
     devices[unique_store_key] = sensor_data
 
     # Persist to store so sensors survive HA restarts
     from . import _async_save_store
     await _async_save_store(hass)
 
-    # Dispatch signal for dynamic entity creation
-    signal = SIGNAL_SENSOR_REGISTER.format(device_id, sensor_type)
-    async_dispatcher_send(hass, signal, sensor_data)
+    # Dispatch signal for dynamic entity creation. If an entity for this
+    # unique_id already exists, sensor.py will skip creation — we then push
+    # the new metadata directly to the existing entity via SIGNAL_SENSOR_UPDATE
+    # so its device_class/unit/state_class can change at runtime (e.g. when
+    # the desktop app switches a sensor's state shape between versions).
+    register_signal = SIGNAL_SENSOR_REGISTER.format(device_id, sensor_type)
+    async_dispatcher_send(hass, register_signal, sensor_data)
+
+    if is_reregistration:
+        update_signal = SIGNAL_SENSOR_UPDATE.format(device_id, sensor_unique_id)
+        async_dispatcher_send(
+            hass,
+            update_signal,
+            {
+                ATTR_SENSOR_STATE: data.get(ATTR_SENSOR_STATE),
+                ATTR_SENSOR_ICON: data.get(ATTR_SENSOR_ICON),
+                ATTR_SENSOR_ATTRIBUTES: data.get(ATTR_SENSOR_ATTRIBUTES, {}),
+                ATTR_SENSOR_DEVICE_CLASS: data.get(ATTR_SENSOR_DEVICE_CLASS),
+                ATTR_SENSOR_UNIT_OF_MEASUREMENT: data.get(
+                    ATTR_SENSOR_UNIT_OF_MEASUREMENT
+                ),
+                ATTR_SENSOR_STATE_CLASS: data.get(ATTR_SENSOR_STATE_CLASS),
+            },
+        )
 
     _LOGGER.info(
-        "Registered sensor '%s' (%s) for device %s",
+        "%s sensor '%s' (%s) for device %s",
+        "Re-registered" if is_reregistration else "Registered",
         data[ATTR_SENSOR_NAME],
         sensor_type,
         device_id,
