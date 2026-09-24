@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib.util
+import json
 import sys
 import types
 from datetime import datetime, timezone
@@ -11,6 +12,7 @@ import pytest
 
 
 SOURCE = Path(__file__).resolve().parents[1] / "custom_components" / "desktop_app"
+PROTOCOL_FIXTURE = Path(__file__).resolve().parents[1] / "contracts" / "protocol-v1.json"
 
 
 @pytest.fixture
@@ -127,6 +129,22 @@ def test_unchanged_registration_skips_store_write(webhook_env):
     }
     assert signals[-2][1] == const.SIGNAL_SENSOR_UPDATE.format("device", "cpu_usage")
     assert signals[-2][2] == update
+
+
+def test_shared_desktop_protocol_fixture_is_accepted(webhook_env):
+    send, hass, const, _, saves = webhook_env
+    fixture = json.loads(PROTOCOL_FIXTURE.read_text(encoding="utf-8"))
+    registered = asyncio.run(send(fixture["register_sensor"]))
+    assert registered.status == 200
+    assert registered.data == fixture["ack"]
+    assert len(saves) == 1
+
+    updated = asyncio.run(send(fixture["update_sensor_states"]))
+    assert updated.status == 200
+    assert updated.data == fixture["ack"]
+    pending = hass.data[const.DOMAIN][const.DATA_PENDING_UPDATES]["hook"]["device_cpu_usage"]
+    assert pending[const.ATTR_SENSOR_STATE] == 21.5
+    assert pending[const.ATTR_SENSOR_ATTRIBUTES] == {"measurement_source": "system"}
 
 
 def test_failed_sensor_store_write_does_not_acknowledge_or_change_entities(webhook_env):
