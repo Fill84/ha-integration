@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -113,6 +114,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     runtime = hass.data[DOMAIN]
     webhook_registered = False
     timer_started = False
+    platform_setup_started = False
     try:
         # A stale registration can remain after an interrupted reload.
         webhook_component.async_unregister(hass, webhook_id)
@@ -132,10 +134,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             runtime[DATA_AVAILABILITY_TIMER] = start_availability_timer(hass)
             timer_started = True
 
+        platform_setup_started = True
         result = await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
         if result is False:
             raise RuntimeError("Desktop App platforms failed to set up")
-    except Exception:
+    except (Exception, asyncio.CancelledError):
+        if platform_setup_started:
+            try:
+                await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+            except Exception:
+                _LOGGER.exception("Could not unload partially started Desktop App platforms")
         if webhook_registered:
             webhook_component.async_unregister(hass, webhook_id)
         runtime[DATA_PENDING_UPDATES].pop(webhook_id, None)

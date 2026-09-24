@@ -16,6 +16,7 @@ SOURCE = Path(__file__).resolve().parents[1] / "custom_components" / "desktop_ap
 def entry_env(monkeypatch):
     registered = set()
     stopped = []
+    unloaded = []
 
     def module(name, **values):
         value = types.ModuleType(name)
@@ -67,6 +68,10 @@ def entry_env(monkeypatch):
     async def forward(_entry, _platforms):
         return None
 
+    async def unload(entry, _platforms):
+        unloaded.append(entry.entry_id)
+        return True
+
     hass = types.SimpleNamespace(
         data={const.DOMAIN: {
             const.DATA_PENDING_UPDATES: {},
@@ -75,7 +80,10 @@ def entry_env(monkeypatch):
             const.DATA_AVAILABILITY_STATE: {},
             const.DATA_UPDATE_INTERVALS: {},
         }},
-        config_entries=types.SimpleNamespace(async_forward_entry_setups=forward),
+        config_entries=types.SimpleNamespace(
+            async_forward_entry_setups=forward,
+            async_unload_platforms=unload,
+        ),
     )
 
     def entry(device_id):
@@ -84,11 +92,11 @@ def entry_env(monkeypatch):
             const.ATTR_WEBHOOK_ID: f"hook-{device_id}",
         })
 
-    return entry_module, hass, const, entry, registered, stopped
+    return entry_module, hass, const, entry, registered, stopped, unloaded
 
 
 def test_failed_first_entry_cleans_runtime_resources(entry_env):
-    component, hass, const, make_entry, registered, stopped = entry_env
+    component, hass, const, make_entry, registered, stopped, unloaded = entry_env
 
     async def fail(_entry, _platforms):
         raise RuntimeError("platform unavailable")
@@ -102,10 +110,11 @@ def test_failed_first_entry_cleans_runtime_resources(entry_env):
     assert runtime[const.DATA_PENDING_UPDATES] == {}
     assert const.DATA_AVAILABILITY_TIMER not in runtime
     assert stopped == [True]
+    assert unloaded == ["first"]
 
 
 def test_failed_second_entry_keeps_existing_device_running(entry_env):
-    component, hass, const, make_entry, registered, stopped = entry_env
+    component, hass, const, make_entry, registered, stopped, unloaded = entry_env
     asyncio.run(component.async_setup_entry(hass, make_entry("first")))
 
     async def fail(_entry, _platforms):
@@ -121,3 +130,21 @@ def test_failed_second_entry_keeps_existing_device_running(entry_env):
     assert set(runtime[const.DATA_PENDING_UPDATES]) == {"hook-first"}
     assert const.DATA_AVAILABILITY_TIMER in runtime
     assert stopped == []
+    assert unloaded == ["second"]
+
+
+def test_cancelled_setup_releases_its_resources(entry_env):
+    component, hass, const, make_entry, registered, stopped, unloaded = entry_env
+
+    async def cancel(_entry, _platforms):
+        raise asyncio.CancelledError
+
+    hass.config_entries.async_forward_entry_setups = cancel
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(component.async_setup_entry(hass, make_entry("cancelled")))
+
+    assert not registered
+    assert hass.data[const.DOMAIN][const.DATA_PENDING_UPDATES] == {}
+    assert const.DATA_AVAILABILITY_TIMER not in hass.data[const.DOMAIN]
+    assert stopped == [True]
+    assert unloaded == ["cancelled"]
