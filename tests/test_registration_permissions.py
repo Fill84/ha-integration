@@ -63,17 +63,28 @@ def test_existing_device_requires_owner_or_admin(monkeypatch):
     class Request:
         app = {"hass": hass}
 
-        def __init__(self, user_id, is_admin=False):
+        def __init__(self, user_id, is_admin=False, payload=None):
             self.user = types.SimpleNamespace(id=user_id, is_admin=is_admin)
+            self.payload = payload
 
         def __getitem__(self, key):
             assert key == "hass_user"
             return self.user
 
         async def json(self):
-            return {"device_id": "device-1", "device_name": "Office PC"}
+            return self.payload if self.payload is not None else {
+                "device_id": "device-1", "device_name": "Office PC",
+            }
 
     view = api.DesktopAppRegistrationView()
+    for invalid in (
+        [],
+        {"device_id": "device-1", "device_name": "Office PC", "os_version": []},
+        {"device_id": "device\n1", "device_name": "Office PC"},
+    ):
+        rejected = asyncio.run(view.post(Request("alice", payload=invalid)))
+        assert rejected.status == 400
+    assert not repaired and not updates
     denied = asyncio.run(view.post(Request("bob")))
     assert denied.status == 403
     assert not repaired and not updates

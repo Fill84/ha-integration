@@ -39,6 +39,7 @@ from .const import (
 from .helpers import error_response, webhook_response
 
 _LOGGER = logging.getLogger(__name__)
+MAX_SENSORS_PER_DEVICE = 512
 
 
 def _valid_text(value: Any, *, required: bool = False, limit: int = 128) -> bool:
@@ -198,6 +199,10 @@ async def handle_register_sensor(
 
     devices = hass.data[DOMAIN].setdefault(DATA_REGISTERED_SENSORS, {})
     is_reregistration = unique_store_key in devices
+    if not is_reregistration and sum(
+        sensor.get(ATTR_DEVICE_ID) == device_id for sensor in devices.values()
+    ) >= MAX_SENSORS_PER_DEVICE:
+        return error_response("Device sensor limit reached", status=400)
 
     sensor_data = {
         ATTR_SENSOR_UNIQUE_ID: sensor_unique_id,
@@ -282,6 +287,15 @@ async def handle_update_sensor_states(
         return error_response("'sensors' must be a list", status=400)
     if any(not _valid_sensor_update(sensor) for sensor in sensor_states):
         return error_response("Invalid sensor update", status=400)
+    if len(sensor_states) > MAX_SENSORS_PER_DEVICE:
+        return error_response("Too many sensor updates", status=400)
+    device_id = entry.data[ATTR_DEVICE_ID]
+    registered = hass.data[DOMAIN].get(DATA_REGISTERED_SENSORS, {})
+    received_ids = [sensor[ATTR_SENSOR_UNIQUE_ID] for sensor in sensor_states]
+    if len(received_ids) != len(set(received_ids)):
+        return error_response("Duplicate sensor update", status=400)
+    if any(f"{device_id}_{sensor_id}" not in registered for sensor_id in received_ids):
+        return error_response("Sensor is not registered", status=409)
     snapshot_scope = data.get("snapshot_scope")
     if snapshot_scope not in (None, "all", "dynamic"):
         return error_response("snapshot_scope must be 'all' or 'dynamic'", status=400)
@@ -292,9 +306,8 @@ async def handle_update_sensor_states(
         from .const import DATA_UPDATE_INTERVALS
         hass.data[DOMAIN].setdefault(DATA_UPDATE_INTERVALS, {})[entry.data[ATTR_DEVICE_ID]] = update_interval
 
-    device_id = entry.data[ATTR_DEVICE_ID]
     pending = hass.data[DOMAIN][DATA_PENDING_UPDATES].setdefault(webhook_id, {})
-    received_ids = {sensor[ATTR_SENSOR_UNIQUE_ID] for sensor in sensor_states}
+    received_ids = set(received_ids)
 
     for sensor_update in sensor_states:
         sensor_unique_id = sensor_update.get(ATTR_SENSOR_UNIQUE_ID)
@@ -320,7 +333,6 @@ async def handle_update_sensor_states(
     # A complete snapshot explicitly clears missing readings while retaining
     # their registered unique IDs and existing HA automations.
     if snapshot_scope is not None:
-        registered = hass.data[DOMAIN].get(DATA_REGISTERED_SENSORS, {})
         for sensor_data in list(registered.values()):
             if sensor_data.get(ATTR_DEVICE_ID) != device_id:
                 continue

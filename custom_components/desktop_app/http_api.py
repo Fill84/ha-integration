@@ -40,6 +40,17 @@ REGISTRATION_SCHEMA_OPTIONAL = [
 ]
 
 
+def _valid_registration_text(value: Any, *, required: bool = False) -> bool:
+    if value is None:
+        return not required
+    return (
+        isinstance(value, str)
+        and (not required or bool(value.strip()))
+        and len(value) <= 128
+        and not any(ord(char) < 32 for char in value)
+    )
+
+
 class DesktopAppPingView(HomeAssistantView):
     """Health check endpoint to verify the Desktop App integration is loaded and reachable."""
 
@@ -110,6 +121,8 @@ class DesktopAppRegistrationView(HomeAssistantView):
             data: dict[str, Any] = await request.json()
         except ValueError:
             return error_response("Invalid JSON", status=400)
+        if not isinstance(data, dict):
+            return error_response("Body must be a JSON object", status=400)
 
         # Validate required fields
         for field in REGISTRATION_SCHEMA_REQUIRED:
@@ -117,10 +130,13 @@ class DesktopAppRegistrationView(HomeAssistantView):
                 return error_response(f"Missing required field: {field}", status=400)
 
         device_id = data[ATTR_DEVICE_ID]
-        if not isinstance(device_id, str) or not device_id or len(device_id) > 128:
+        if not _valid_registration_text(device_id, required=True):
             return error_response("Invalid device_id", status=400)
-        if not isinstance(data[ATTR_DEVICE_NAME], str) or not data[ATTR_DEVICE_NAME] or len(data[ATTR_DEVICE_NAME]) > 128:
+        if not _valid_registration_text(data[ATTR_DEVICE_NAME], required=True):
             return error_response("Invalid device_name", status=400)
+        for field in REGISTRATION_SCHEMA_OPTIONAL:
+            if field in data and not _valid_registration_text(data[field]):
+                return error_response(f"Invalid {field}", status=400)
 
         # If a config entry already exists for this device_id, repair its
         # webhook registration (idempotent) and return the same webhook_id.
@@ -145,14 +161,13 @@ class DesktopAppRegistrationView(HomeAssistantView):
             device_name = entry.data.get(ATTR_DEVICE_NAME, "Desktop App")
             try:
                 _ensure_webhook_registered(hass, webhook_id, device_name)
-            except Exception as err:  # noqa: BLE001 - log + report, don't crash registration
+            except Exception:  # noqa: BLE001 - log + report, don't crash registration
                 _LOGGER.exception(
-                    "Failed to repair webhook for existing device %s: %s",
+                    "Failed to repair webhook for existing device %s",
                     device_id,
-                    err,
                 )
                 return error_response(
-                    f"Could not repair webhook registration: {err}", status=500
+                    "Could not repair webhook registration", status=500
                 )
 
             _LOGGER.info(
@@ -211,7 +226,7 @@ class DesktopAppDataView(HomeAssistantView):
         if not isinstance(data, dict):
             return error_response("Body must be a JSON object", status=400)
 
-        _LOGGER.debug("Desktop app update received: %s", data)
+        _LOGGER.debug("Desktop app update received (%d fields)", len(data))
 
         hass.bus.async_fire(EVENT_DESKTOP_APP_UPDATE, dict(data))
 

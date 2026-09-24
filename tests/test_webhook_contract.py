@@ -215,3 +215,50 @@ def test_malformed_sensor_commands_do_not_mutate_state(webhook_env, payload):
     assert state.get(const.DATA_REGISTERED_SENSORS, {}) == {}
     assert signals == []
     assert saves == []
+
+
+def test_unknown_and_duplicate_sensors_are_rejected_before_heartbeat(webhook_env):
+    send, hass, const, signals, _ = webhook_env
+    for sensors in (
+        [{"sensor_unique_id": "missing", "sensor_state": 1}],
+        [{"sensor_unique_id": "missing", "sensor_state": 1}] * 2,
+    ):
+        response = asyncio.run(send({"type": "update_sensor_states", "data": {
+            "sensors": sensors, "update_interval": 60,
+        }}))
+        assert response.status in (400, 409)
+    state = hass.data[const.DOMAIN]
+    assert state[const.DATA_LAST_SEEN] == {}
+    assert state.get(const.DATA_UPDATE_INTERVALS, {}) == {}
+    assert state[const.DATA_PENDING_UPDATES] == {}
+    assert signals == []
+
+
+def test_registered_sensor_update_is_accepted(webhook_env):
+    send, hass, const, signals, _ = webhook_env
+    assert asyncio.run(send({"type": "register_sensor", "data": {
+        "sensor_unique_id": "cpu_usage", "sensor_name": "CPU Usage", "sensor_type": "sensor",
+    }})).status == 200
+    response = asyncio.run(send({"type": "update_sensor_states", "data": {
+        "sensors": [{"sensor_unique_id": "cpu_usage", "sensor_state": 42}],
+        "update_interval": 60,
+    }}))
+    assert response.status == 200
+    assert hass.data[const.DOMAIN][const.DATA_PENDING_UPDATES]["hook"]["device_cpu_usage"][const.ATTR_SENSOR_STATE] == 42
+    assert hass.data[const.DOMAIN][const.DATA_UPDATE_INTERVALS]["device"] == 60
+    assert any(signal[1] == const.SIGNAL_SENSOR_UPDATE.format("device", "cpu_usage") for signal in signals)
+
+
+def test_oversized_sensor_batch_is_rejected_without_heartbeat(webhook_env):
+    send, hass, const, signals, _ = webhook_env
+    sensors = [
+        {"sensor_unique_id": f"sensor_{index}", "sensor_state": index}
+        for index in range(513)
+    ]
+    response = asyncio.run(send({"type": "update_sensor_states", "data": {
+        "sensors": sensors, "update_interval": 60,
+    }}))
+    assert response.status == 400
+    assert hass.data[const.DOMAIN][const.DATA_LAST_SEEN] == {}
+    assert hass.data[const.DOMAIN][const.DATA_PENDING_UPDATES] == {}
+    assert signals == []
