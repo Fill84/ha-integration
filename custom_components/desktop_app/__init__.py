@@ -109,30 +109,45 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         sw_version=registration.get(ATTR_APP_VERSION),
     )
 
-    # Register the webhook handler. Defensive: if a stale registration is
-    # somehow already in HA's webhook table (e.g. setup ran twice during a
-    # reload), unregister first — async_register raises otherwise.
-    webhook_component.async_unregister(hass, webhook_id)
-    webhook_component.async_register(
-        hass,
-        DOMAIN,
-        f"Desktop App ({registration.get(ATTR_DEVICE_NAME, device_id)})",
-        webhook_id,
-        handle_webhook,
-        allowed_methods=["POST"],
-    )
-
-    # Initialize pending updates dict for this entry
-    hass.data[DOMAIN][DATA_PENDING_UPDATES][webhook_id] = {}
-
-    # Phase 3: start the periodic availability check once (first entry triggers).
     from .const import DATA_AVAILABILITY_TIMER
-    if DATA_AVAILABILITY_TIMER not in hass.data[DOMAIN]:
-        from .availability import start_availability_timer
-        hass.data[DOMAIN][DATA_AVAILABILITY_TIMER] = start_availability_timer(hass)
+    runtime = hass.data[DOMAIN]
+    webhook_registered = False
+    timer_started = False
+    try:
+        # A stale registration can remain after an interrupted reload.
+        webhook_component.async_unregister(hass, webhook_id)
+        webhook_component.async_register(
+            hass,
+            DOMAIN,
+            f"Desktop App ({registration.get(ATTR_DEVICE_NAME, device_id)})",
+            webhook_id,
+            handle_webhook,
+            allowed_methods=["POST"],
+        )
+        webhook_registered = True
+        runtime[DATA_PENDING_UPDATES][webhook_id] = {}
 
-    # Forward setup to sensor and binary_sensor platforms
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        if DATA_AVAILABILITY_TIMER not in runtime:
+            from .availability import start_availability_timer
+            runtime[DATA_AVAILABILITY_TIMER] = start_availability_timer(hass)
+            timer_started = True
+
+        result = await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        if result is False:
+            raise RuntimeError("Desktop App platforms failed to set up")
+    except Exception:
+        if webhook_registered:
+            webhook_component.async_unregister(hass, webhook_id)
+        runtime[DATA_PENDING_UPDATES].pop(webhook_id, None)
+        runtime[DATA_LAST_SEEN].pop(device_id, None)
+        runtime[DATA_AVAILABILITY_STATE].pop(device_id, None)
+        runtime[DATA_UPDATE_INTERVALS].pop(device_id, None)
+        if timer_started and not runtime[DATA_LOADED_DEVICES]:
+            unsubscribe = runtime.pop(DATA_AVAILABILITY_TIMER, None)
+            if unsubscribe is not None:
+                unsubscribe()
+        raise
+
     hass.data[DOMAIN][DATA_LOADED_DEVICES].add(entry.entry_id)
 
     _LOGGER.info("Desktop App entry set up for device: %s", device_id)

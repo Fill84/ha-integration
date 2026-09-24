@@ -137,8 +137,11 @@ class DesktopAppEntity(RestoreEntity):
         sending a plain string — those fields must replace the originals,
         including explicit ``None`` to clear a previous value.
         """
-        if ATTR_SENSOR_ICON in update_data and update_data[ATTR_SENSOR_ICON]:
-            self._attr_icon = update_data[ATTR_SENSOR_ICON]
+        if ATTR_SENSOR_NAME in update_data:
+            self._attr_name = update_data[ATTR_SENSOR_NAME]
+
+        if ATTR_SENSOR_ICON in update_data:
+            self._attr_icon = update_data[ATTR_SENSOR_ICON] or "mdi:desktop-tower-monitor"
 
         if ATTR_SENSOR_ATTRIBUTES in update_data:
             self._attr_extra_state_attributes = update_data[ATTR_SENSOR_ATTRIBUTES]
@@ -155,6 +158,9 @@ class DesktopAppEntity(RestoreEntity):
 
         if ATTR_SENSOR_STATE_CLASS in update_data:
             self._attr_state_class = update_data[ATTR_SENSOR_STATE_CLASS]
+
+        if ATTR_SENSOR_ENTITY_CATEGORY in update_data:
+            self._attr_entity_category = update_data[ATTR_SENSOR_ENTITY_CATEGORY]
 
         if ATTR_SENSOR_STATE in update_data:
             self._update_state(update_data[ATTR_SENSOR_STATE])

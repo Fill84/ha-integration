@@ -117,8 +117,66 @@ def test_unchanged_registration_skips_store_write(webhook_env):
     assert asyncio.run(send(payload)).status == 200
     assert len(saves) == 1
     payload["data"]["sensor_state"] = 21
+    payload["data"]["sensor_attributes"] = {"source": "new-reading"}
     assert asyncio.run(send(payload)).status == 200
     assert len(saves) == 1
+    update = hass.data[const.DOMAIN][const.DATA_PENDING_UPDATES]["hook"]["device_cpu_usage"]
+    assert update == {
+        const.ATTR_SENSOR_STATE: 21,
+        const.ATTR_SENSOR_ATTRIBUTES: {"source": "new-reading"},
+    }
+    assert signals[-2][1] == const.SIGNAL_SENSOR_UPDATE.format("device", "cpu_usage")
+    assert signals[-2][2] == update
+
+
+def test_changed_registration_updates_all_metadata_without_changing_unique_id(webhook_env):
+    send, hass, const, signals, saves = webhook_env
+    payload = {"type": "register_sensor", "data": {
+        "sensor_unique_id": "cpu_usage", "sensor_name": "CPU Usage",
+        "sensor_type": "sensor", "sensor_state": 12,
+        "sensor_icon": "mdi:cpu-64-bit", "sensor_entity_category": "diagnostic",
+    }}
+    assert asyncio.run(send(payload)).status == 200
+    payload["data"].update({
+        "sensor_name": "Processor Usage", "sensor_state": 31,
+        "sensor_icon": None, "sensor_entity_category": None,
+    })
+    assert asyncio.run(send(payload)).status == 200
+    assert len(saves) == 2
+    assert list(hass.data[const.DOMAIN][const.DATA_REGISTERED_SENSORS]) == ["device_cpu_usage"]
+    update = hass.data[const.DOMAIN][const.DATA_PENDING_UPDATES]["hook"]["device_cpu_usage"]
+    assert update[const.ATTR_SENSOR_NAME] == "Processor Usage"
+    assert update[const.ATTR_SENSOR_ICON] is None
+    assert update[const.ATTR_SENSOR_ENTITY_CATEGORY] is None
+    assert update[const.ATTR_SENSOR_STATE] == 31
+    assert signals[-2][1] == const.SIGNAL_SENSOR_UPDATE.format("device", "cpu_usage")
+
+
+def test_reregistration_cannot_move_an_existing_entity_to_another_domain(webhook_env):
+    send, hass, const, signals, saves = webhook_env
+    data = {"sensor_unique_id": "online", "sensor_name": "Online", "sensor_type": "sensor"}
+    assert asyncio.run(send({"type": "register_sensor", "data": data})).status == 200
+    before_signals = len(signals)
+    data["sensor_type"] = "binary_sensor"
+    response = asyncio.run(send({"type": "register_sensor", "data": data}))
+    assert response.status == 409
+    assert len(saves) == 1
+    assert len(signals) == before_signals
+    stored = hass.data[const.DOMAIN][const.DATA_REGISTERED_SENSORS]["device_online"]
+    assert stored[const.ATTR_SENSOR_TYPE] == "sensor"
+
+
+def test_partial_state_update_preserves_unmentioned_icon_and_attributes(webhook_env):
+    send, hass, const, signals, _ = webhook_env
+    assert asyncio.run(send({"type": "register_sensor", "data": {
+        "sensor_unique_id": "cpu_usage", "sensor_name": "CPU Usage", "sensor_type": "sensor",
+    }})).status == 200
+    assert asyncio.run(send({"type": "update_sensor_states", "data": {
+        "sensors": [{"sensor_unique_id": "cpu_usage", "sensor_state": 42}],
+    }})).status == 200
+    update = hass.data[const.DOMAIN][const.DATA_PENDING_UPDATES]["hook"]["device_cpu_usage"]
+    assert update == {const.ATTR_SENSOR_STATE: 42}
+    assert signals[-2][2] == update
 
 
 def test_snapshot_clears_missing_values_without_changing_registered_ids(webhook_env):

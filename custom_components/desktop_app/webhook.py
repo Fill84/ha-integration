@@ -221,6 +221,8 @@ async def handle_register_sensor(
     }
 
     previous = devices.get(unique_store_key)
+    if previous is not None and previous.get(ATTR_SENSOR_TYPE) != sensor_type:
+        return error_response("Changing an existing sensor's entity type is not supported", status=409)
     descriptor_keys = (
         ATTR_SENSOR_UNIQUE_ID, ATTR_SENSOR_NAME, ATTR_SENSOR_TYPE,
         ATTR_SENSOR_ICON, ATTR_SENSOR_DEVICE_CLASS,
@@ -229,6 +231,16 @@ async def handle_register_sensor(
         ATTR_SENSOR_UPDATE_AT_INTERVAL,
     )
     if previous is not None and all(previous.get(key) == sensor_data.get(key) for key in descriptor_keys):
+        current_value = {
+            ATTR_SENSOR_STATE: data.get(ATTR_SENSOR_STATE),
+            ATTR_SENSOR_ATTRIBUTES: data.get(ATTR_SENSOR_ATTRIBUTES, {}),
+        }
+        hass.data[DOMAIN][DATA_PENDING_UPDATES].setdefault(webhook_id, {})[unique_store_key] = current_value
+        async_dispatcher_send(
+            hass,
+            SIGNAL_SENSOR_UPDATE.format(device_id, sensor_unique_id),
+            current_value,
+        )
         return webhook_response({"success": True})
 
     # Store sensor registration (overwrites any prior entry)
@@ -248,19 +260,21 @@ async def handle_register_sensor(
 
     if is_reregistration:
         update_signal = SIGNAL_SENSOR_UPDATE.format(device_id, sensor_unique_id)
+        update_data = {
+            ATTR_SENSOR_NAME: data[ATTR_SENSOR_NAME],
+            ATTR_SENSOR_STATE: data.get(ATTR_SENSOR_STATE),
+            ATTR_SENSOR_ICON: data.get(ATTR_SENSOR_ICON),
+            ATTR_SENSOR_ATTRIBUTES: data.get(ATTR_SENSOR_ATTRIBUTES, {}),
+            ATTR_SENSOR_DEVICE_CLASS: data.get(ATTR_SENSOR_DEVICE_CLASS),
+            ATTR_SENSOR_ENTITY_CATEGORY: data.get(ATTR_SENSOR_ENTITY_CATEGORY),
+            ATTR_SENSOR_UNIT_OF_MEASUREMENT: data.get(ATTR_SENSOR_UNIT_OF_MEASUREMENT),
+            ATTR_SENSOR_STATE_CLASS: data.get(ATTR_SENSOR_STATE_CLASS),
+        }
+        hass.data[DOMAIN][DATA_PENDING_UPDATES].setdefault(webhook_id, {})[unique_store_key] = update_data
         async_dispatcher_send(
             hass,
             update_signal,
-            {
-                ATTR_SENSOR_STATE: data.get(ATTR_SENSOR_STATE),
-                ATTR_SENSOR_ICON: data.get(ATTR_SENSOR_ICON),
-                ATTR_SENSOR_ATTRIBUTES: data.get(ATTR_SENSOR_ATTRIBUTES, {}),
-                ATTR_SENSOR_DEVICE_CLASS: data.get(ATTR_SENSOR_DEVICE_CLASS),
-                ATTR_SENSOR_UNIT_OF_MEASUREMENT: data.get(
-                    ATTR_SENSOR_UNIT_OF_MEASUREMENT
-                ),
-                ATTR_SENSOR_STATE_CLASS: data.get(ATTR_SENSOR_STATE_CLASS),
-            },
+            update_data,
         )
 
     _LOGGER.info(
@@ -316,11 +330,10 @@ async def handle_update_sensor_states(
 
         unique_store_key = f"{device_id}_{sensor_unique_id}"
 
-        update_data = {
-            ATTR_SENSOR_STATE: sensor_update.get(ATTR_SENSOR_STATE),
-            ATTR_SENSOR_ICON: sensor_update.get(ATTR_SENSOR_ICON),
-            ATTR_SENSOR_ATTRIBUTES: sensor_update.get(ATTR_SENSOR_ATTRIBUTES, {}),
-        }
+        update_data = {ATTR_SENSOR_STATE: sensor_update.get(ATTR_SENSOR_STATE)}
+        for field in (ATTR_SENSOR_ICON, ATTR_SENSOR_ATTRIBUTES):
+            if field in sensor_update:
+                update_data[field] = sensor_update[field]
 
         # Buffer in pending updates
         pending[unique_store_key] = update_data

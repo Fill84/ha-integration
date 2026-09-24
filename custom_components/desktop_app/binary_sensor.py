@@ -31,7 +31,9 @@ class DesktopAppBinarySensor(DesktopAppEntity, BinarySensorEntity):
 
     def _update_state(self, state: Any) -> None:
         """Update binary sensor state."""
-        if isinstance(state, bool):
+        if state is None:
+            self._attr_is_on = None
+        elif isinstance(state, bool):
             self._attr_is_on = state
         elif isinstance(state, str):
             self._attr_is_on = state.lower() in ("true", "on", "1", "yes")
