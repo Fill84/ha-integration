@@ -23,6 +23,7 @@ from .const import (
     ATTR_SENSOR_TYPE,
     ATTR_SENSOR_UNIQUE_ID,
     ATTR_SENSOR_UNIT_OF_MEASUREMENT,
+    ATTR_SENSOR_UPDATE_AT_INTERVAL,
     ATTR_WEBHOOK_ID,
     COMMAND_DEVICE_OFFLINE,
     COMMAND_REGISTER_SENSOR,
@@ -137,6 +138,8 @@ async def handle_register_sensor(
             f"Invalid sensor type: {sensor_type}. Must be 'sensor' or 'binary_sensor'.",
             status=400,
         )
+    if not isinstance(data.get(ATTR_SENSOR_UPDATE_AT_INTERVAL, False), bool):
+        return error_response("update_at_interval must be a boolean", status=400)
 
     device_id = entry.data[ATTR_DEVICE_ID]
     sensor_unique_id = data[ATTR_SENSOR_UNIQUE_ID]
@@ -156,6 +159,7 @@ async def handle_register_sensor(
         ATTR_SENSOR_STATE_CLASS: data.get(ATTR_SENSOR_STATE_CLASS),
         ATTR_SENSOR_ENTITY_CATEGORY: data.get(ATTR_SENSOR_ENTITY_CATEGORY),
         ATTR_SENSOR_ATTRIBUTES: data.get(ATTR_SENSOR_ATTRIBUTES, {}),
+        ATTR_SENSOR_UPDATE_AT_INTERVAL: data.get(ATTR_SENSOR_UPDATE_AT_INTERVAL, False),
         "unique_store_key": unique_store_key,
         ATTR_DEVICE_ID: device_id,
     }
@@ -166,6 +170,7 @@ async def handle_register_sensor(
         ATTR_SENSOR_ICON, ATTR_SENSOR_DEVICE_CLASS,
         ATTR_SENSOR_UNIT_OF_MEASUREMENT, ATTR_SENSOR_STATE_CLASS,
         ATTR_SENSOR_ENTITY_CATEGORY,
+        ATTR_SENSOR_UPDATE_AT_INTERVAL,
     )
     if previous is not None and all(previous.get(key) == sensor_data.get(key) for key in descriptor_keys):
         return webhook_response({"success": True})
@@ -227,6 +232,9 @@ async def handle_update_sensor_states(
     if any(not isinstance(sensor, dict) or not isinstance(sensor.get(ATTR_SENSOR_UNIQUE_ID), str)
            or not sensor[ATTR_SENSOR_UNIQUE_ID] for sensor in sensor_states):
         return error_response("Each sensor needs a non-empty sensor_unique_id", status=400)
+    snapshot_scope = data.get("snapshot_scope")
+    if snapshot_scope not in (None, "all", "dynamic"):
+        return error_response("snapshot_scope must be 'all' or 'dynamic'", status=400)
     update_interval = data.get("update_interval")
     if update_interval is not None:
         if type(update_interval) is not int or not 5 <= update_interval <= 3600:
@@ -236,6 +244,7 @@ async def handle_update_sensor_states(
 
     device_id = entry.data[ATTR_DEVICE_ID]
     pending = hass.data[DOMAIN][DATA_PENDING_UPDATES].setdefault(webhook_id, {})
+    received_ids = {sensor[ATTR_SENSOR_UNIQUE_ID] for sensor in sensor_states}
 
     for sensor_update in sensor_states:
         sensor_unique_id = sensor_update.get(ATTR_SENSOR_UNIQUE_ID)
@@ -256,6 +265,26 @@ async def handle_update_sensor_states(
         # Dispatch signal to individual entity
         signal = SIGNAL_SENSOR_UPDATE.format(device_id, sensor_unique_id)
         async_dispatcher_send(hass, signal, update_data)
+
+    # Older clients omit snapshot_scope and retain their previous behavior.
+    # A complete snapshot explicitly clears missing readings while retaining
+    # their registered unique IDs and existing HA automations.
+    if snapshot_scope is not None:
+        registered = hass.data[DOMAIN].get(DATA_REGISTERED_SENSORS, {})
+        for sensor_data in list(registered.values()):
+            if sensor_data.get(ATTR_DEVICE_ID) != device_id:
+                continue
+            sensor_unique_id = sensor_data[ATTR_SENSOR_UNIQUE_ID]
+            if sensor_unique_id in received_ids:
+                continue
+            if snapshot_scope == "dynamic" and not sensor_data.get(ATTR_SENSOR_UPDATE_AT_INTERVAL, False):
+                continue
+            unique_store_key = f"{device_id}_{sensor_unique_id}"
+            missing = {ATTR_SENSOR_STATE: None, ATTR_SENSOR_ATTRIBUTES: {}}
+            pending[unique_store_key] = missing
+            async_dispatcher_send(
+                hass, SIGNAL_SENSOR_UPDATE.format(device_id, sensor_unique_id), missing
+            )
 
     _LOGGER.debug(
         "Updated %d sensor states for device %s",

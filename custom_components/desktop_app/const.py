@@ -38,6 +38,7 @@ ATTR_SENSOR_DEVICE_CLASS = "sensor_device_class"
 ATTR_SENSOR_UNIT_OF_MEASUREMENT = "sensor_unit_of_measurement"
 ATTR_SENSOR_STATE_CLASS = "sensor_state_class"
 ATTR_SENSOR_ENTITY_CATEGORY = "sensor_entity_category"
+ATTR_SENSOR_UPDATE_AT_INTERVAL = "update_at_interval"
 
 # Webhook command types
 COMMAND_REGISTER_SENSOR = "register_sensor"

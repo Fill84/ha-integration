@@ -118,3 +118,51 @@ def test_unchanged_registration_skips_store_write(webhook_env):
     payload["data"]["sensor_state"] = 21
     assert asyncio.run(send(payload)).status == 200
     assert len(saves) == 1
+
+
+def test_snapshot_clears_missing_values_without_changing_registered_ids(webhook_env):
+    send, hass, const, signals, saves = webhook_env
+    for sensor_id, dynamic in (("cpu_usage", True), ("last_boot", False)):
+        response = asyncio.run(send({"type": "register_sensor", "data": {
+            "sensor_unique_id": sensor_id, "sensor_name": sensor_id,
+            "sensor_type": "sensor", "sensor_state": 12,
+            "update_at_interval": dynamic,
+        }}))
+        assert response.status == 200
+
+    response = asyncio.run(send({"type": "update_sensor_states", "data": {
+        "sensors": [], "snapshot_scope": "dynamic",
+    }}))
+    assert response.status == 200
+    pending = hass.data[const.DOMAIN][const.DATA_PENDING_UPDATES]["hook"]
+    assert pending["device_cpu_usage"][const.ATTR_SENSOR_STATE] is None
+    assert "device_last_boot" not in pending
+    assert "device_cpu_usage" in hass.data[const.DOMAIN][const.DATA_REGISTERED_SENSORS]
+
+    response = asyncio.run(send({"type": "update_sensor_states", "data": {
+        "sensors": [], "snapshot_scope": "all",
+    }}))
+    assert response.status == 200
+    assert pending["device_last_boot"][const.ATTR_SENSOR_STATE] is None
+    assert len(saves) == 2
+
+
+def test_legacy_update_does_not_clear_missing_values(webhook_env):
+    send, hass, const, signals, _ = webhook_env
+    asyncio.run(send({"type": "register_sensor", "data": {
+        "sensor_unique_id": "cpu_usage", "sensor_name": "CPU Usage", "sensor_type": "sensor",
+    }}))
+    response = asyncio.run(send({"type": "update_sensor_states", "data": {"sensors": []}}))
+    assert response.status == 200
+    assert hass.data[const.DOMAIN][const.DATA_PENDING_UPDATES]["hook"] == {}
+    assert not any(signal[1] == const.SIGNAL_SENSOR_UPDATE.format("device", "cpu_usage")
+                   for signal in signals)
+
+
+def test_invalid_snapshot_scope_is_rejected_before_heartbeat(webhook_env):
+    send, hass, const, _, _ = webhook_env
+    response = asyncio.run(send({"type": "update_sensor_states", "data": {
+        "sensors": [], "snapshot_scope": "everything",
+    }}))
+    assert response.status == 400
+    assert hass.data[const.DOMAIN][const.DATA_LAST_SEEN] == {}
