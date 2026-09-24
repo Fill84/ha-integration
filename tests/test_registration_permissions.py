@@ -104,3 +104,13 @@ def test_existing_device_requires_owner_or_admin(monkeypatch):
     assert allowed.status == 200
     assert allowed.data["webhook_id"] == "secret-hook"
     assert len(repaired) == 1
+
+    entry.data.pop("owner_user_id")
+    legacy_denied = asyncio.run(view.post(Request("bob")))
+    assert legacy_denied.status == 403
+    assert len(repaired) == 1
+    assert not updates
+
+    migrated = asyncio.run(view.post(Request("admin", is_admin=True)))
+    assert migrated.status == 200
+    assert updates[0][1]["data"]["owner_user_id"] == "admin"

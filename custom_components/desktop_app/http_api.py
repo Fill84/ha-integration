@@ -153,7 +153,11 @@ class DesktopAppRegistrationView(HomeAssistantView):
                 continue
 
             owner_id = entry.data.get("owner_user_id")
-            if owner_id != user.id and not user.is_admin:
+            # A legacy entry without an owner cannot prove which ordinary HA
+            # user created it. Only an admin may bind that entry to an owner.
+            if owner_id is None and not user.is_admin:
+                return error_response("Legacy device requires administrator ownership migration", status=403)
+            if owner_id is not None and owner_id != user.id and not user.is_admin:
                 return error_response("Device is registered to another user", status=403)
             if entry.entry_id not in hass.data.get(DOMAIN, {}).get(DATA_LOADED_DEVICES, set()):
                 return error_response("Device entry is not loaded yet", status=503)
