@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any, Callable, Coroutine
 
 from aiohttp.web import Request, Response
@@ -38,6 +39,35 @@ from .const import (
 from .helpers import error_response, webhook_response
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _valid_text(value: Any, *, required: bool = False, limit: int = 128) -> bool:
+    """Validate metadata without changing existing sensor identifiers."""
+    if value is None:
+        return not required
+    return (
+        isinstance(value, str)
+        and (not required or bool(value.strip()))
+        and len(value) <= limit
+        and not any(ord(char) < 32 for char in value)
+    )
+
+
+def _valid_sensor_update(sensor: Any) -> bool:
+    return (
+        isinstance(sensor, dict)
+        and _valid_text(sensor.get(ATTR_SENSOR_UNIQUE_ID), required=True)
+        and isinstance(sensor.get(ATTR_SENSOR_ATTRIBUTES, {}), dict)
+        and _valid_text(sensor.get(ATTR_SENSOR_ICON))
+        and _valid_state(sensor.get(ATTR_SENSOR_STATE))
+    )
+
+
+def _valid_state(value: Any) -> bool:
+    """HA entity states are scalar; nonfinite numbers cannot be represented."""
+    return value is None or isinstance(value, (str, bool, int)) or (
+        isinstance(value, float) and math.isfinite(value)
+    )
 
 # Registry of webhook command handlers
 WEBHOOK_COMMANDS: dict[
@@ -78,9 +108,13 @@ async def handle_webhook(
         return error_response("Invalid JSON", status=400)
     if not isinstance(data, dict):
         return error_response("Payload must be a JSON object", status=400)
+    # Legacy desktop clients do not send a version. Reject unknown versions
+    # before dispatch so a future wire format cannot silently mutate state.
+    if data.get("protocol_version", 1) != 1 or isinstance(data.get("protocol_version", 1), bool):
+        return error_response("Unsupported protocol version", status=400)
 
     command_type = data.get("type")
-    if not isinstance(command_type, str) or not command_type or len(command_type) > 64:
+    if not _valid_text(command_type, required=True, limit=64):
         return error_response("Invalid 'type' field", status=400)
 
     handler = WEBHOOK_COMMANDS.get(command_type)
@@ -138,6 +172,23 @@ async def handle_register_sensor(
             f"Invalid sensor type: {sensor_type}. Must be 'sensor' or 'binary_sensor'.",
             status=400,
         )
+    if not _valid_text(data[ATTR_SENSOR_UNIQUE_ID], required=True):
+        return error_response("Invalid sensor_unique_id", status=400)
+    if not _valid_text(data[ATTR_SENSOR_NAME], required=True):
+        return error_response("Invalid sensor_name", status=400)
+    for field in (
+        ATTR_SENSOR_ICON,
+        ATTR_SENSOR_DEVICE_CLASS,
+        ATTR_SENSOR_UNIT_OF_MEASUREMENT,
+        ATTR_SENSOR_STATE_CLASS,
+        ATTR_SENSOR_ENTITY_CATEGORY,
+    ):
+        if not _valid_text(data.get(field)):
+            return error_response(f"Invalid {field}", status=400)
+    if not isinstance(data.get(ATTR_SENSOR_ATTRIBUTES, {}), dict):
+        return error_response("sensor_attributes must be an object", status=400)
+    if not _valid_state(data.get(ATTR_SENSOR_STATE)):
+        return error_response("sensor_state must be scalar", status=400)
     if not isinstance(data.get(ATTR_SENSOR_UPDATE_AT_INTERVAL, False), bool):
         return error_response("update_at_interval must be a boolean", status=400)
 
@@ -229,9 +280,8 @@ async def handle_update_sensor_states(
     sensor_states = data.get("sensors", [])
     if not isinstance(sensor_states, list):
         return error_response("'sensors' must be a list", status=400)
-    if any(not isinstance(sensor, dict) or not isinstance(sensor.get(ATTR_SENSOR_UNIQUE_ID), str)
-           or not sensor[ATTR_SENSOR_UNIQUE_ID] for sensor in sensor_states):
-        return error_response("Each sensor needs a non-empty sensor_unique_id", status=400)
+    if any(not _valid_sensor_update(sensor) for sensor in sensor_states):
+        return error_response("Invalid sensor update", status=400)
     snapshot_scope = data.get("snapshot_scope")
     if snapshot_scope not in (None, "all", "dynamic"):
         return error_response("snapshot_scope must be 'all' or 'dynamic'", status=400)
@@ -311,6 +361,9 @@ async def handle_update_registration(
 
     updatable_fields = ("os_version", "app_version", "device_name")
     updates = {k: data[k] for k in updatable_fields if k in data}
+    for field, value in updates.items():
+        if not _valid_text(value, required=field == "device_name"):
+            return error_response(f"Invalid {field}", status=400)
     if not updates:
         return webhook_response({"success": True})
 

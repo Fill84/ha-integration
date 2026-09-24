@@ -25,7 +25,7 @@ def webhook_response(data: dict[str, Any] | None = None, status: int = 200) -> R
     """Create a webhook response."""
     if data is None:
         data = {}
-    return json_response(data, status=status)
+    return json_response({**data, "protocol_version": 1}, status=status)
 
 
 def error_response(message: str, status: int = 400) -> Response:

@@ -95,6 +95,7 @@ def test_valid_empty_update_acknowledges_heartbeat_and_offline_clears_it(webhook
         "sensors": [], "update_interval": 600,
     }}))
     assert response.status == 200 and response.data["success"] is True
+    assert response.data["protocol_version"] == 1
     state = hass.data[const.DOMAIN]
     assert state[const.DATA_LAST_SEEN]["device"]
     assert state[const.DATA_UPDATE_INTERVALS]["device"] == 600
@@ -166,3 +167,51 @@ def test_invalid_snapshot_scope_is_rejected_before_heartbeat(webhook_env):
     }}))
     assert response.status == 400
     assert hass.data[const.DOMAIN][const.DATA_LAST_SEEN] == {}
+
+
+@pytest.mark.parametrize("payload", [
+    {"type": "register_sensor", "data": {
+        "sensor_unique_id": ["cpu_usage"], "sensor_name": "CPU Usage", "sensor_type": "sensor",
+    }},
+    {"type": "register_sensor", "data": {
+        "sensor_unique_id": "cpu\nusage", "sensor_name": "CPU Usage", "sensor_type": "sensor",
+    }},
+    {"type": "register_sensor", "data": {
+        "sensor_unique_id": "cpu_usage", "sensor_name": "CPU Usage", "sensor_type": "sensor",
+        "sensor_attributes": [],
+    }},
+    {"type": "update_sensor_states", "data": {
+        "sensors": [{"sensor_unique_id": "cpu_usage", "sensor_attributes": []}],
+        "update_interval": 60,
+    }},
+    {"type": "update_sensor_states", "data": {
+        "sensors": [{"sensor_unique_id": "cpu_usage", "sensor_icon": 42}],
+        "update_interval": 60,
+    }},
+    {"type": "update_registration", "data": {"device_name": {"bad": "name"}}},
+    {"type": "register_sensor", "data": {
+        "sensor_unique_id": "cpu_usage", "sensor_name": "CPU Usage", "sensor_type": "sensor",
+        "sensor_state": {"unexpected": "object"},
+    }},
+    {"type": "update_sensor_states", "data": {
+        "sensors": [{"sensor_unique_id": "cpu_usage", "sensor_state": float("nan")}],
+        "update_interval": 60,
+    }},
+    {"type": "update_sensor_states", "data": {
+        "sensors": [{"sensor_unique_id": "cpu_usage", "sensor_state": [1, 2]}],
+        "update_interval": 60,
+    }},
+    {"type": "register_sensor\n", "data": {}},
+    {"protocol_version": 2, "type": "update_sensor_states", "data": {"sensors": []}},
+    {"protocol_version": True, "type": "update_sensor_states", "data": {"sensors": []}},
+])
+def test_malformed_sensor_commands_do_not_mutate_state(webhook_env, payload):
+    send, hass, const, signals, saves = webhook_env
+    response = asyncio.run(send(payload))
+    assert response.status == 400
+    state = hass.data[const.DOMAIN]
+    assert state[const.DATA_LAST_SEEN] == {}
+    assert state.get(const.DATA_UPDATE_INTERVALS, {}) == {}
+    assert state.get(const.DATA_REGISTERED_SENSORS, {}) == {}
+    assert signals == []
+    assert saves == []
