@@ -34,7 +34,6 @@ from .const import (
     STORAGE_VERSION,
 )
 from .http_api import (
-    DesktopAppDataView,
     DesktopAppPingView,
     DesktopAppPingViewWithSlash,
     DesktopAppRegistrationView,
@@ -77,11 +76,10 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     hass.http.register_view(DesktopAppPingView())
     hass.http.register_view(DesktopAppPingViewWithSlash())
     hass.http.register_view(DesktopAppRegistrationView())
-    hass.http.register_view(DesktopAppDataView())
     hass.data[DOMAIN][DATA_API_VIEW_REGISTERED] = True
     _LOGGER.info(
         "Registered Desktop App API at /api/desktop_app/registrations, "
-        "/api/desktop_app/ping, /api/desktop_app/update"
+        "/api/desktop_app/ping"
     )
 
     return True

@@ -55,7 +55,7 @@ def entry_env(monkeypatch):
     const = load("const")
     module("entry_component.http_api", **{
         name: object for name in (
-            "DesktopAppDataView", "DesktopAppPingView", "DesktopAppPingViewWithSlash",
+            "DesktopAppPingView", "DesktopAppPingViewWithSlash",
             "DesktopAppRegistrationView",
         )
     })

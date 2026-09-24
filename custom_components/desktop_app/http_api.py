@@ -6,7 +6,7 @@ import logging
 import secrets
 from typing import Any
 
-from aiohttp.web import Request, Response, json_response
+from aiohttp.web import Request, Response
 
 from homeassistant.components import webhook as webhook_component
 from homeassistant.core import HomeAssistant
@@ -25,7 +25,6 @@ from .const import (
     ATTR_WEBHOOK_ID,
     DOMAIN,
     DATA_LOADED_DEVICES,
-    EVENT_DESKTOP_APP_UPDATE,
 )
 from .helpers import error_response, registration_response
 
@@ -213,28 +212,3 @@ class DesktopAppRegistrationView(HomeAssistantView):
             device_id,
         )
         return error_response("Failed to register device", status=500)
-
-
-class DesktopAppDataView(HomeAssistantView):
-    """Accept status/battery updates from the desktop app and fire an event."""
-
-    url = "/api/desktop_app/update"
-    name = "api:desktop_app:update"
-    requires_auth = True
-
-    async def post(self, request: Request) -> Response:
-        """Accept JSON data (e.g. status, battery) and fire desktop_app_update_event."""
-        hass: HomeAssistant = request.app["hass"]
-        try:
-            data: dict[str, Any] = await request.json()
-        except ValueError:
-            return error_response("Invalid JSON", status=400)
-
-        if not isinstance(data, dict):
-            return error_response("Body must be a JSON object", status=400)
-
-        _LOGGER.debug("Desktop app update received (%d fields)", len(data))
-
-        hass.bus.async_fire(EVENT_DESKTOP_APP_UPDATE, dict(data))
-
-        return json_response({"result": "ok"})
