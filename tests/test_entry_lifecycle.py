@@ -148,3 +148,19 @@ def test_cancelled_setup_releases_its_resources(entry_env):
     assert const.DATA_AVAILABILITY_TIMER not in hass.data[const.DOMAIN]
     assert stopped == [True]
     assert unloaded == ["cancelled"]
+
+
+def test_failed_device_removal_keeps_sensor_metadata_for_retry(entry_env):
+    component, hass, const, make_entry, _, _, _ = entry_env
+    device = make_entry("first")
+    metadata = {const.ATTR_DEVICE_ID: "first", const.ATTR_SENSOR_UNIQUE_ID: "cpu"}
+    runtime = hass.data[const.DOMAIN]
+    runtime[const.DATA_REGISTERED_SENSORS] = {"first_cpu": metadata}
+
+    async def fail_save(_hass):
+        raise OSError("disk full")
+
+    component._async_save_store = fail_save
+    with pytest.raises(OSError, match="disk full"):
+        asyncio.run(component.async_remove_entry(hass, device))
+    assert runtime[const.DATA_REGISTERED_SENSORS] == {"first_cpu": metadata}

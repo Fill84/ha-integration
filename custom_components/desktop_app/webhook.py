@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 from typing import Any, Callable, Coroutine
@@ -31,6 +32,7 @@ from .const import (
     COMMAND_UPDATE_REGISTRATION,
     COMMAND_UPDATE_SENSOR_STATES,
     DATA_PENDING_UPDATES,
+    DATA_REGISTRATION_LOCK,
     DATA_REGISTERED_SENSORS,
     DOMAIN,
     SIGNAL_SENSOR_REGISTER,
@@ -193,99 +195,108 @@ async def handle_register_sensor(
     if not isinstance(data.get(ATTR_SENSOR_UPDATE_AT_INTERVAL, False), bool):
         return error_response("update_at_interval must be a boolean", status=400)
 
-    device_id = entry.data[ATTR_DEVICE_ID]
-    sensor_unique_id = data[ATTR_SENSOR_UNIQUE_ID]
-    unique_store_key = f"{device_id}_{sensor_unique_id}"
+    async with hass.data[DOMAIN].setdefault(DATA_REGISTRATION_LOCK, asyncio.Lock()):
+        device_id = entry.data[ATTR_DEVICE_ID]
+        sensor_unique_id = data[ATTR_SENSOR_UNIQUE_ID]
+        unique_store_key = f"{device_id}_{sensor_unique_id}"
 
-    devices = hass.data[DOMAIN].setdefault(DATA_REGISTERED_SENSORS, {})
-    is_reregistration = unique_store_key in devices
-    if not is_reregistration and sum(
-        sensor.get(ATTR_DEVICE_ID) == device_id for sensor in devices.values()
-    ) >= MAX_SENSORS_PER_DEVICE:
-        return error_response("Device sensor limit reached", status=400)
+        devices = hass.data[DOMAIN].setdefault(DATA_REGISTERED_SENSORS, {})
+        is_reregistration = unique_store_key in devices
+        if not is_reregistration and sum(
+            sensor.get(ATTR_DEVICE_ID) == device_id for sensor in devices.values()
+        ) >= MAX_SENSORS_PER_DEVICE:
+            return error_response("Device sensor limit reached", status=400)
 
-    sensor_data = {
-        ATTR_SENSOR_UNIQUE_ID: sensor_unique_id,
-        ATTR_SENSOR_NAME: data[ATTR_SENSOR_NAME],
-        ATTR_SENSOR_TYPE: sensor_type,
-        ATTR_SENSOR_STATE: data.get(ATTR_SENSOR_STATE),
-        ATTR_SENSOR_ICON: data.get(ATTR_SENSOR_ICON),
-        ATTR_SENSOR_DEVICE_CLASS: data.get(ATTR_SENSOR_DEVICE_CLASS),
-        ATTR_SENSOR_UNIT_OF_MEASUREMENT: data.get(ATTR_SENSOR_UNIT_OF_MEASUREMENT),
-        ATTR_SENSOR_STATE_CLASS: data.get(ATTR_SENSOR_STATE_CLASS),
-        ATTR_SENSOR_ENTITY_CATEGORY: data.get(ATTR_SENSOR_ENTITY_CATEGORY),
-        ATTR_SENSOR_ATTRIBUTES: data.get(ATTR_SENSOR_ATTRIBUTES, {}),
-        ATTR_SENSOR_UPDATE_AT_INTERVAL: data.get(ATTR_SENSOR_UPDATE_AT_INTERVAL, False),
-        "unique_store_key": unique_store_key,
-        ATTR_DEVICE_ID: device_id,
-    }
-
-    previous = devices.get(unique_store_key)
-    if previous is not None and previous.get(ATTR_SENSOR_TYPE) != sensor_type:
-        return error_response("Changing an existing sensor's entity type is not supported", status=409)
-    descriptor_keys = (
-        ATTR_SENSOR_UNIQUE_ID, ATTR_SENSOR_NAME, ATTR_SENSOR_TYPE,
-        ATTR_SENSOR_ICON, ATTR_SENSOR_DEVICE_CLASS,
-        ATTR_SENSOR_UNIT_OF_MEASUREMENT, ATTR_SENSOR_STATE_CLASS,
-        ATTR_SENSOR_ENTITY_CATEGORY,
-        ATTR_SENSOR_UPDATE_AT_INTERVAL,
-    )
-    if previous is not None and all(previous.get(key) == sensor_data.get(key) for key in descriptor_keys):
-        current_value = {
-            ATTR_SENSOR_STATE: data.get(ATTR_SENSOR_STATE),
-            ATTR_SENSOR_ATTRIBUTES: data.get(ATTR_SENSOR_ATTRIBUTES, {}),
-        }
-        hass.data[DOMAIN][DATA_PENDING_UPDATES].setdefault(webhook_id, {})[unique_store_key] = current_value
-        async_dispatcher_send(
-            hass,
-            SIGNAL_SENSOR_UPDATE.format(device_id, sensor_unique_id),
-            current_value,
-        )
-        return webhook_response({"success": True})
-
-    # Store sensor registration (overwrites any prior entry)
-    devices[unique_store_key] = sensor_data
-
-    # Persist to store so sensors survive HA restarts
-    from . import _async_save_store
-    await _async_save_store(hass)
-
-    # Dispatch signal for dynamic entity creation. If an entity for this
-    # unique_id already exists, sensor.py will skip creation — we then push
-    # the new metadata directly to the existing entity via SIGNAL_SENSOR_UPDATE
-    # so its device_class/unit/state_class can change at runtime (e.g. when
-    # the desktop app switches a sensor's state shape between versions).
-    register_signal = SIGNAL_SENSOR_REGISTER.format(device_id, sensor_type)
-    async_dispatcher_send(hass, register_signal, sensor_data)
-
-    if is_reregistration:
-        update_signal = SIGNAL_SENSOR_UPDATE.format(device_id, sensor_unique_id)
-        update_data = {
+        sensor_data = {
+            ATTR_SENSOR_UNIQUE_ID: sensor_unique_id,
             ATTR_SENSOR_NAME: data[ATTR_SENSOR_NAME],
+            ATTR_SENSOR_TYPE: sensor_type,
             ATTR_SENSOR_STATE: data.get(ATTR_SENSOR_STATE),
             ATTR_SENSOR_ICON: data.get(ATTR_SENSOR_ICON),
-            ATTR_SENSOR_ATTRIBUTES: data.get(ATTR_SENSOR_ATTRIBUTES, {}),
             ATTR_SENSOR_DEVICE_CLASS: data.get(ATTR_SENSOR_DEVICE_CLASS),
-            ATTR_SENSOR_ENTITY_CATEGORY: data.get(ATTR_SENSOR_ENTITY_CATEGORY),
             ATTR_SENSOR_UNIT_OF_MEASUREMENT: data.get(ATTR_SENSOR_UNIT_OF_MEASUREMENT),
             ATTR_SENSOR_STATE_CLASS: data.get(ATTR_SENSOR_STATE_CLASS),
+            ATTR_SENSOR_ENTITY_CATEGORY: data.get(ATTR_SENSOR_ENTITY_CATEGORY),
+            ATTR_SENSOR_ATTRIBUTES: data.get(ATTR_SENSOR_ATTRIBUTES, {}),
+            ATTR_SENSOR_UPDATE_AT_INTERVAL: data.get(ATTR_SENSOR_UPDATE_AT_INTERVAL, False),
+            "unique_store_key": unique_store_key,
+            ATTR_DEVICE_ID: device_id,
         }
-        hass.data[DOMAIN][DATA_PENDING_UPDATES].setdefault(webhook_id, {})[unique_store_key] = update_data
-        async_dispatcher_send(
-            hass,
-            update_signal,
-            update_data,
+
+        previous = devices.get(unique_store_key)
+        if previous is not None and previous.get(ATTR_SENSOR_TYPE) != sensor_type:
+            return error_response("Changing an existing sensor's entity type is not supported", status=409)
+        descriptor_keys = (
+            ATTR_SENSOR_UNIQUE_ID, ATTR_SENSOR_NAME, ATTR_SENSOR_TYPE,
+            ATTR_SENSOR_ICON, ATTR_SENSOR_DEVICE_CLASS,
+            ATTR_SENSOR_UNIT_OF_MEASUREMENT, ATTR_SENSOR_STATE_CLASS,
+            ATTR_SENSOR_ENTITY_CATEGORY,
+            ATTR_SENSOR_UPDATE_AT_INTERVAL,
+        )
+        if previous is not None and all(previous.get(key) == sensor_data.get(key) for key in descriptor_keys):
+            current_value = {
+                ATTR_SENSOR_STATE: data.get(ATTR_SENSOR_STATE),
+                ATTR_SENSOR_ATTRIBUTES: data.get(ATTR_SENSOR_ATTRIBUTES, {}),
+            }
+            hass.data[DOMAIN][DATA_PENDING_UPDATES].setdefault(webhook_id, {})[unique_store_key] = current_value
+            async_dispatcher_send(
+                hass,
+                SIGNAL_SENSOR_UPDATE.format(device_id, sensor_unique_id),
+                current_value,
+            )
+            return webhook_response({"success": True})
+
+        # Store sensor registration (overwrites any prior entry)
+        devices[unique_store_key] = sensor_data
+
+        # Persist to store so sensors survive HA restarts
+        from . import _async_save_store
+        try:
+            await _async_save_store(hass)
+        except Exception:
+            if previous is None:
+                devices.pop(unique_store_key, None)
+            else:
+                devices[unique_store_key] = previous
+            _LOGGER.exception("Could not persist sensor registration for device %s", device_id)
+            return error_response("Could not persist sensor registration", status=503)
+
+        # Dispatch signal for dynamic entity creation. If an entity for this
+        # unique_id already exists, sensor.py will skip creation — we then push
+        # the new metadata directly to the existing entity via SIGNAL_SENSOR_UPDATE
+        # so its device_class/unit/state_class can change at runtime (e.g. when
+        # the desktop app switches a sensor's state shape between versions).
+        register_signal = SIGNAL_SENSOR_REGISTER.format(device_id, sensor_type)
+        async_dispatcher_send(hass, register_signal, sensor_data)
+
+        if is_reregistration:
+            update_signal = SIGNAL_SENSOR_UPDATE.format(device_id, sensor_unique_id)
+            update_data = {
+                ATTR_SENSOR_NAME: data[ATTR_SENSOR_NAME],
+                ATTR_SENSOR_STATE: data.get(ATTR_SENSOR_STATE),
+                ATTR_SENSOR_ICON: data.get(ATTR_SENSOR_ICON),
+                ATTR_SENSOR_ATTRIBUTES: data.get(ATTR_SENSOR_ATTRIBUTES, {}),
+                ATTR_SENSOR_DEVICE_CLASS: data.get(ATTR_SENSOR_DEVICE_CLASS),
+                ATTR_SENSOR_ENTITY_CATEGORY: data.get(ATTR_SENSOR_ENTITY_CATEGORY),
+                ATTR_SENSOR_UNIT_OF_MEASUREMENT: data.get(ATTR_SENSOR_UNIT_OF_MEASUREMENT),
+                ATTR_SENSOR_STATE_CLASS: data.get(ATTR_SENSOR_STATE_CLASS),
+            }
+            hass.data[DOMAIN][DATA_PENDING_UPDATES].setdefault(webhook_id, {})[unique_store_key] = update_data
+            async_dispatcher_send(
+                hass,
+                update_signal,
+                update_data,
+            )
+
+        _LOGGER.info(
+            "%s sensor '%s' (%s) for device %s",
+            "Re-registered" if is_reregistration else "Registered",
+            data[ATTR_SENSOR_NAME],
+            sensor_type,
+            device_id,
         )
 
-    _LOGGER.info(
-        "%s sensor '%s' (%s) for device %s",
-        "Re-registered" if is_reregistration else "Registered",
-        data[ATTR_SENSOR_NAME],
-        sensor_type,
-        device_id,
-    )
-
-    return webhook_response({"success": True})
+        return webhook_response({"success": True})
 
 
 @webhook_command(COMMAND_UPDATE_SENSOR_STATES)

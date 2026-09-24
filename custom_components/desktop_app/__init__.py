@@ -25,6 +25,7 @@ from .const import (
     DATA_UPDATE_INTERVALS,
     DATA_PENDING_UPDATES,
     DATA_REGISTERED_SENSORS,
+    DATA_REGISTRATION_LOCK,
     DATA_LOADED_DEVICES,
     DATA_STORE,
     DOMAIN,
@@ -201,13 +202,22 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Remove only this device's persisted sensor metadata."""
     if entry.data.get("is_hub") or DOMAIN not in hass.data:
         return
-    device_id = entry.data.get(ATTR_DEVICE_ID)
-    devices = hass.data[DOMAIN].get(DATA_REGISTERED_SENSORS, {})
-    keys = [key for key, value in devices.items() if value.get(ATTR_DEVICE_ID) == device_id]
-    for key in keys:
-        devices.pop(key, None)
-    if keys:
-        await _async_save_store(hass)
+    async with hass.data[DOMAIN].setdefault(DATA_REGISTRATION_LOCK, asyncio.Lock()):
+        device_id = entry.data.get(ATTR_DEVICE_ID)
+        devices = hass.data[DOMAIN].get(DATA_REGISTERED_SENSORS, {})
+        removed = {
+            key: value for key, value in devices.items()
+            if value.get(ATTR_DEVICE_ID) == device_id
+        }
+        for key in removed:
+            devices.pop(key)
+        if removed:
+            try:
+                await _async_save_store(hass)
+            except Exception:
+                devices.update(removed)
+                _LOGGER.exception("Could not persist removal of device %s", device_id)
+                raise
 
 
 async def _async_save_store(hass: HomeAssistant) -> None:

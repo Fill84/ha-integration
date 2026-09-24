@@ -129,6 +129,76 @@ def test_unchanged_registration_skips_store_write(webhook_env):
     assert signals[-2][2] == update
 
 
+def test_failed_sensor_store_write_does_not_acknowledge_or_change_entities(webhook_env):
+    send, hass, const, signals, _ = webhook_env
+    package = sys.modules["contract_component"]
+    original_save = package._async_save_store
+    async def fail_save(_hass):
+        raise OSError("disk full")
+
+    payload = {"type": "register_sensor", "data": {
+        "sensor_unique_id": "cpu_usage", "sensor_name": "CPU Usage",
+        "sensor_type": "sensor", "sensor_state": 12,
+    }}
+    package._async_save_store = fail_save
+    response = asyncio.run(send(payload))
+    assert response.status == 503
+    assert hass.data[const.DOMAIN][const.DATA_REGISTERED_SENSORS] == {}
+    assert hass.data[const.DOMAIN][const.DATA_LAST_SEEN] == {}
+    assert signals == []
+
+    package._async_save_store = original_save
+    assert asyncio.run(send(payload)).status == 200
+    original = hass.data[const.DOMAIN][const.DATA_REGISTERED_SENSORS]["device_cpu_usage"]
+    before_signals = len(signals)
+    package._async_save_store = fail_save
+    payload["data"]["sensor_name"] = "Processor Usage"
+    response = asyncio.run(send(payload))
+    assert response.status == 503
+    assert hass.data[const.DOMAIN][const.DATA_REGISTERED_SENSORS]["device_cpu_usage"] is original
+    assert len(signals) == before_signals
+
+
+def test_concurrent_registrations_isolate_a_failed_store_write(webhook_env):
+    send, hass, const, _, _ = webhook_env
+    package = sys.modules["contract_component"]
+
+    async def scenario():
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        calls = 0
+
+        async def save(_hass):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                entered.set()
+                await release.wait()
+                raise OSError("disk full")
+
+        package._async_save_store = save
+        def payload(unique_id):
+            return {"type": "register_sensor", "data": {
+                "sensor_unique_id": unique_id,
+                "sensor_name": unique_id,
+                "sensor_type": "sensor",
+            }}
+
+        first = asyncio.create_task(send(payload("first")))
+        await entered.wait()
+        second = asyncio.create_task(send(payload("second")))
+        await asyncio.sleep(0)
+        assert calls == 1
+        release.set()
+        first_result, second_result = await asyncio.gather(first, second)
+        assert first_result.status == 503
+        assert second_result.status == 200
+        assert calls == 2
+
+    asyncio.run(scenario())
+    assert set(hass.data[const.DOMAIN][const.DATA_REGISTERED_SENSORS]) == {"device_second"}
+
+
 def test_changed_registration_updates_all_metadata_without_changing_unique_id(webhook_env):
     send, hass, const, signals, saves = webhook_env
     payload = {"type": "register_sensor", "data": {
