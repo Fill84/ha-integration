@@ -30,7 +30,14 @@ def test_existing_device_requires_owner_or_admin(monkeypatch):
     module("homeassistant.core", HomeAssistant=object)
     module("homeassistant.helpers")
     module("homeassistant.helpers.device_registry", DeviceInfo=dict)
-    module("homeassistant.helpers.http", HomeAssistantView=object)
+    class HomeAssistantView:
+        def json(self, data):
+            return Response(data)
+
+    module("homeassistant.helpers.http", HomeAssistantView=HomeAssistantView)
+    async def async_get_integration(_hass, _domain):
+        return types.SimpleNamespace(version="1.0.11")
+    module("homeassistant.loader", async_get_integration=async_get_integration)
     package = module("permission_component")
     package.__path__ = [str(SOURCE)]
 
@@ -77,6 +84,10 @@ def test_existing_device_requires_owner_or_admin(monkeypatch):
             }
 
     view = api.DesktopAppRegistrationView()
+    version = asyncio.run(view.get(Request("alice")))
+    assert version.status == 200
+    assert version.data["integration_version"] == "1.0.11"
+    assert "registration API" in version.data["message"]
     for invalid in (
         [],
         {"device_id": "device-1", "device_name": "Office PC", "os_version": []},

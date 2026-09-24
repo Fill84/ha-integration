@@ -6,7 +6,7 @@ The desktop and this integration use a small JSON protocol. Configure a Home Ass
 
 `POST /api/desktop_app/registrations` with `Authorization: Bearer <token>` and `Content-Type: application/json`. The body must be a JSON object with nonempty `device_id` and `device_name` strings (up to 128 characters). Optional strings: `manufacturer`, `model`, `os_name`, `os_version`, `app_version`. Success returns `{"success":true,"webhook_id":"…"}`. Registering an existing `device_id` returns its existing webhook to its owner or a HA admin; an unrelated non-admin receives 403. Keep the device ID stable across upgrades to retain entities.
 
-`GET /api/desktop_app/ping` is unauthenticated and returns 200 when the API has loaded. It is only a reachability check. `POST /api/desktop_app/update` is authenticated and emits the supplied JSON object as a HA event; the desktop sensor flow uses the webhook instead.
+`GET /api/desktop_app/ping` is unauthenticated and returns 200 when the API has loaded. It is only a reachability check. `GET /api/desktop_app/registrations` requires the same bearer token as registration and, from version 1.0.11, returns `integration_version` from HA's loaded integration manifest. Older versions omit that field, so the desktop displays the version as unknown. `POST /api/desktop_app/update` is authenticated and emits the supplied JSON object as a HA event; the desktop sensor flow uses the webhook instead.
 
 ## Webhook
 

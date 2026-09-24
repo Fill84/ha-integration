@@ -12,6 +12,7 @@ from homeassistant.components import webhook as webhook_component
 from homeassistant.core import HomeAssistant
 from homeassistant.components.http import KEY_HASS_USER
 from homeassistant.helpers.http import HomeAssistantView
+from homeassistant.loader import async_get_integration
 
 from .const import (
     ATTR_APP_VERSION,
@@ -107,10 +108,12 @@ class DesktopAppRegistrationView(HomeAssistantView):
     requires_auth = True
 
     async def get(self, request: Request) -> Response:
-        """Allow checking that the registration endpoint exists (returns 401 without auth)."""
-        return self.json_message(
-            "Desktop App registration API; use POST with device_id and device_name"
-        )
+        """Report the running integration version to authenticated clients."""
+        integration = await async_get_integration(request.app["hass"], DOMAIN)
+        return self.json({
+            "message": "Desktop App registration API; use POST with device_id and device_name",
+            "integration_version": str(integration.version) if integration.version else None,
+        })
 
     async def post(self, request: Request) -> Response:
         """Handle device registration."""

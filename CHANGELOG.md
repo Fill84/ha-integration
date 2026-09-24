@@ -9,6 +9,7 @@
 - Reject unknown or duplicate sensor updates and cap registrations per device.
 - Add protocol version 1 acknowledgements while accepting legacy unversioned desktop clients.
 - Avoid logging the full body of the authenticated update endpoint.
+- Report the version of the integration actually loaded by Home Assistant to authenticated clients.
 
 The public HACS repository remains on 1.0.10 until the integration has passed
 the Home Assistant upgrade test and the agreed two-computer release gate.
