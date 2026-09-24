@@ -4,9 +4,9 @@ The desktop and this integration use a small JSON protocol. Configure a Home Ass
 
 ## Registration
 
-`POST /api/desktop_app/registrations` with `Authorization: Bearer <token>` and `Content-Type: application/json`. The body must be a JSON object with nonempty `device_id` and `device_name` strings (up to 128 characters). Optional strings: `manufacturer`, `model`, `os_name`, `os_version`, `app_version`. Success returns `{"success":true,"webhook_id":"…"}`. Registering an existing `device_id` returns its existing webhook to its owner or a HA admin; an unrelated non-admin receives 403. Keep the device ID stable across upgrades to retain entities.
+`POST /api/desktop_app/registrations` with `Authorization: Bearer <token>` and `Content-Type: application/json`. The body must be a JSON object with nonempty `device_id` and `device_name` strings (up to 128 characters). Optional strings: `manufacturer`, `model`, `os_name`, `os_version`, `app_version`. Success returns `{"success":true,"webhook_id":"…"}`. Registering an existing `device_id` returns its existing webhook to its owner or a HA admin; an unrelated non-admin receives 403. A legacy entry without an owner can only be claimed by an admin. Keep the device ID stable across upgrades to retain entities.
 
-`GET /api/desktop_app/ping` is unauthenticated and returns 200 when the API has loaded. It is only a reachability check. `GET /api/desktop_app/registrations` requires the same bearer token as registration and, from version 1.0.11, returns `integration_version` from HA's loaded integration manifest. Older versions omit that field, so the desktop displays the version as unknown. `POST /api/desktop_app/update` is authenticated and emits the supplied JSON object as a HA event; the desktop sensor flow uses the webhook instead.
+`GET /api/desktop_app/ping` is unauthenticated and returns 200 when the API has loaded. It is only a reachability check. `GET /api/desktop_app/registrations` requires the same bearer token as registration and, from version 1.0.11, returns `integration_version` from HA's loaded integration manifest. Older versions omit that field, so the desktop displays the version as unknown. The unused `/api/desktop_app/update` event endpoint has been removed; all device measurements use the per-device webhook.
 
 ## Webhook
 
@@ -19,4 +19,4 @@ Send `POST /api/webhook/<webhook_id>` with a JSON object containing `"protocol_v
 
 States must be scalar JSON values or `null`; `null` means unavailable. Do not send `NaN` or infinity. Attributes must be JSON objects. `system_uptime` remains numeric seconds and may include a `human_readable` attribute for display. Entity IDs are maintained by retaining device and sensor unique IDs; do not delete an existing HA device to force a refresh.
 
-The [installation guide](INSTALLATION.md) covers deployment, dashboard configuration and rollback. Contract tests in `tests/` cover accepted and rejected payloads, but the release also requires a live Home Assistant upgrade test.
+The [installation guide](INSTALLATION.md) covers deployment, dashboard configuration and rollback. Both repositories contain the same `contracts/protocol-v1.json` fixture; their test suites validate producer and consumer behavior against it, and the release workflow checks that the copies match. Contract tests use Home Assistant boundary stubs, so a live Home Assistant upgrade test is still required.
