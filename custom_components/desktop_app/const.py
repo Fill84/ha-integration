@@ -13,6 +13,7 @@ DATA_API_VIEW_REGISTERED = "api_view_registered"
 DATA_REGISTERED_SENSORS = "registered_sensors"
 DATA_BINARY_SENSOR = "binary_sensor"
 DATA_SENSOR = "sensor"
+DATA_LOADED_DEVICES = "loaded_devices"
 
 # Device attributes
 ATTR_DEVICE_ID = "device_id"
@@ -52,6 +53,8 @@ SIGNAL_SENSOR_REGISTER = f"{DOMAIN}_sensor_register_{{}}_{{}}"
 
 # Phase 3: availability tracking
 DATA_LAST_SEEN = "last_seen"            # dict[device_id, datetime]
+DATA_AVAILABILITY_STATE = "availability_state"  # dict[device_id, bool]
+DATA_UPDATE_INTERVALS = "update_intervals"  # dict[device_id, seconds]
 DATA_AVAILABILITY_TIMER = "availability_timer"  # async unsubscribe handle
 AVAILABILITY_TIMEOUT_FACTOR = 2.5       # multiply update_interval by this
 AVAILABILITY_CHECK_INTERVAL_SECONDS = 30  # how often the timer ticks

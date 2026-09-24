@@ -22,7 +22,9 @@ from .const import (
     ATTR_SENSOR_UNIT_OF_MEASUREMENT,
     ATTR_WEBHOOK_ID,
     DATA_PENDING_UPDATES,
+    DATA_AVAILABILITY_STATE,
     DOMAIN,
+    SIGNAL_AVAILABILITY_UPDATE,
     SIGNAL_SENSOR_UPDATE,
 )
 
@@ -85,6 +87,11 @@ class DesktopAppEntity(RestoreEntity):
             "identifiers": {(DOMAIN, self._device_id)},
         }
 
+    @property
+    def available(self) -> bool:
+        """Do not present restored or stale values as live measurements."""
+        return self.hass.data[DOMAIN].get(DATA_AVAILABILITY_STATE, {}).get(self._device_id, False)
+
     async def async_added_to_hass(self) -> None:
         """Handle entity added to hass."""
         await super().async_added_to_hass()
@@ -100,6 +107,13 @@ class DesktopAppEntity(RestoreEntity):
         self.async_on_remove(
             async_dispatcher_connect(self.hass, signal, self._handle_update)
         )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_AVAILABILITY_UPDATE.format(self._device_id),
+                self._handle_availability,
+            )
+        )
 
         # Apply any pending updates
         pending = self.hass.data[DOMAIN][DATA_PENDING_UPDATES].get(
@@ -108,6 +122,10 @@ class DesktopAppEntity(RestoreEntity):
         unique_store_key = f"{self._device_id}_{self._sensor_unique_id}"
         if unique_store_key in pending:
             self._handle_update(pending.pop(unique_store_key))
+
+    @callback
+    def _handle_availability(self, _is_online: bool) -> None:
+        self.async_write_ha_state()
 
     @callback
     def _handle_update(self, update_data: dict[str, Any]) -> None:
@@ -119,9 +137,6 @@ class DesktopAppEntity(RestoreEntity):
         sending a plain string — those fields must replace the originals,
         including explicit ``None`` to clear a previous value.
         """
-        if ATTR_SENSOR_STATE in update_data:
-            self._update_state(update_data[ATTR_SENSOR_STATE])
-
         if ATTR_SENSOR_ICON in update_data and update_data[ATTR_SENSOR_ICON]:
             self._attr_icon = update_data[ATTR_SENSOR_ICON]
 
@@ -140,6 +155,9 @@ class DesktopAppEntity(RestoreEntity):
 
         if ATTR_SENSOR_STATE_CLASS in update_data:
             self._attr_state_class = update_data[ATTR_SENSOR_STATE_CLASS]
+
+        if ATTR_SENSOR_STATE in update_data:
+            self._update_state(update_data[ATTR_SENSOR_STATE])
 
         self.async_write_ha_state()
 

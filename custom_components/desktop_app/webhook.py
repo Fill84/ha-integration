@@ -75,10 +75,12 @@ async def handle_webhook(
         data: dict[str, Any] = await request.json()
     except ValueError:
         return error_response("Invalid JSON", status=400)
+    if not isinstance(data, dict):
+        return error_response("Payload must be a JSON object", status=400)
 
     command_type = data.get("type")
-    if not command_type:
-        return error_response("Missing 'type' field", status=400)
+    if not isinstance(command_type, str) or not command_type or len(command_type) > 64:
+        return error_response("Invalid 'type' field", status=400)
 
     handler = WEBHOOK_COMMANDS.get(command_type)
     if handler is None:
@@ -95,22 +97,25 @@ async def handle_webhook(
         entry.data.get(ATTR_DEVICE_ID, "unknown"),
     )
 
-    # Phase 3: every command except device_offline counts as a heartbeat.
-    # device_offline is the graceful "I'm going down" signal — recording it
-    # as activity would defeat its purpose (the periodic timer would then
-    # flip the device back online on its next tick).
-    if command_type != COMMAND_DEVICE_OFFLINE:
+    payload = data.get("data", {})
+    if not isinstance(payload, dict):
+        return error_response("Command data must be a JSON object", status=400)
+
+    response = await handler(hass, entry, webhook_id, payload)
+    # Invalid commands and failed handlers must never revive a device.
+    if command_type != COMMAND_DEVICE_OFFLINE and 200 <= response.status < 300:
         from homeassistant.util import dt as dt_util
-        from .const import DATA_LAST_SEEN, SIGNAL_AVAILABILITY_UPDATE
+        from .const import DATA_AVAILABILITY_STATE, DATA_LAST_SEEN, SIGNAL_AVAILABILITY_UPDATE
         device_id = entry.data[ATTR_DEVICE_ID]
         hass.data[DOMAIN].setdefault(DATA_LAST_SEEN, {})[device_id] = dt_util.utcnow()
+        hass.data[DOMAIN].setdefault(DATA_AVAILABILITY_STATE, {})[device_id] = True
         async_dispatcher_send(
             hass,
             SIGNAL_AVAILABILITY_UPDATE.format(device_id),
             True,
         )
 
-    return await handler(hass, entry, webhook_id, data.get("data", {}))
+    return response
 
 
 @webhook_command(COMMAND_REGISTER_SENSOR)
@@ -154,6 +159,16 @@ async def handle_register_sensor(
         "unique_store_key": unique_store_key,
         ATTR_DEVICE_ID: device_id,
     }
+
+    previous = devices.get(unique_store_key)
+    descriptor_keys = (
+        ATTR_SENSOR_UNIQUE_ID, ATTR_SENSOR_NAME, ATTR_SENSOR_TYPE,
+        ATTR_SENSOR_ICON, ATTR_SENSOR_DEVICE_CLASS,
+        ATTR_SENSOR_UNIT_OF_MEASUREMENT, ATTR_SENSOR_STATE_CLASS,
+        ATTR_SENSOR_ENTITY_CATEGORY,
+    )
+    if previous is not None and all(previous.get(key) == sensor_data.get(key) for key in descriptor_keys):
+        return webhook_response({"success": True})
 
     # Store sensor registration (overwrites any prior entry)
     devices[unique_store_key] = sensor_data
@@ -209,6 +224,15 @@ async def handle_update_sensor_states(
     sensor_states = data.get("sensors", [])
     if not isinstance(sensor_states, list):
         return error_response("'sensors' must be a list", status=400)
+    if any(not isinstance(sensor, dict) or not isinstance(sensor.get(ATTR_SENSOR_UNIQUE_ID), str)
+           or not sensor[ATTR_SENSOR_UNIQUE_ID] for sensor in sensor_states):
+        return error_response("Each sensor needs a non-empty sensor_unique_id", status=400)
+    update_interval = data.get("update_interval")
+    if update_interval is not None:
+        if type(update_interval) is not int or not 5 <= update_interval <= 3600:
+            return error_response("update_interval must be 5..3600 seconds", status=400)
+        from .const import DATA_UPDATE_INTERVALS
+        hass.data[DOMAIN].setdefault(DATA_UPDATE_INTERVALS, {})[entry.data[ATTR_DEVICE_ID]] = update_interval
 
     device_id = entry.data[ATTR_DEVICE_ID]
     pending = hass.data[DOMAIN][DATA_PENDING_UPDATES].setdefault(webhook_id, {})
@@ -263,6 +287,13 @@ async def handle_update_registration(
 
     new_data = {**entry.data, **updates}
     hass.config_entries.async_update_entry(entry, data=new_data)
+    from homeassistant.helpers import device_registry as dr
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, device_id)},
+        name=new_data.get("device_name", "Desktop App"),
+        sw_version=new_data.get("app_version"),
+    )
 
     _LOGGER.info("Updated registration for device %s: %s", device_id, list(updates))
 
@@ -281,6 +312,9 @@ async def handle_device_offline(
     from .const import SIGNAL_AVAILABILITY_UPDATE
 
     device_id = entry.data[ATTR_DEVICE_ID]
+    from .const import DATA_AVAILABILITY_STATE, DATA_LAST_SEEN
+    hass.data[DOMAIN].setdefault(DATA_AVAILABILITY_STATE, {})[device_id] = False
+    hass.data[DOMAIN].setdefault(DATA_LAST_SEEN, {}).pop(device_id, None)
     async_dispatcher_send(
         hass,
         SIGNAL_AVAILABILITY_UPDATE.format(device_id),

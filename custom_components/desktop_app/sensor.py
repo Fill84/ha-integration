@@ -22,6 +22,7 @@ from .const import (
     SIGNAL_SENSOR_REGISTER,
 )
 from .entity import DesktopAppEntity
+from .sensor_values import timestamp_value
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,12 +32,16 @@ class DesktopAppSensor(DesktopAppEntity, SensorEntity):
 
     def _update_state(self, state: Any) -> None:
         """Update sensor state."""
+        device_class = getattr(self, "_attr_device_class", None)
+        if getattr(device_class, "value", device_class) == "timestamp":
+            self._attr_native_value = timestamp_value(state)
+            return
         self._attr_native_value = state
 
     def _handle_restore(self, last_state) -> None:
         """Restore sensor state."""
         if last_state.state not in (None, "unknown", "unavailable"):
-            self._attr_native_value = last_state.state
+            self._update_state(last_state.state)
 
 
 async def async_setup_entry(

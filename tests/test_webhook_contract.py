@@ -1,0 +1,120 @@
+"""Exercise real webhook handlers with a small HA boundary stub."""
+
+import asyncio
+import importlib.util
+import sys
+import types
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+
+
+SOURCE = Path(__file__).resolve().parents[1] / "custom_components" / "desktop_app"
+
+
+@pytest.fixture
+def webhook_env(monkeypatch):
+    signals = []
+
+    def module(name, **values):
+        value = types.ModuleType(name)
+        value.__dict__.update(values)
+        monkeypatch.setitem(sys.modules, name, value)
+        return value
+
+    class Response:
+        def __init__(self, data, status=200):
+            self.data = data
+            self.status = status
+
+    module("aiohttp")
+    module("aiohttp.web", Request=object, Response=Response,
+           json_response=lambda data, status=200: Response(data, status))
+    module("homeassistant")
+    module("homeassistant.config_entries", ConfigEntry=object)
+    module("homeassistant.core", HomeAssistant=object)
+    module("homeassistant.helpers")
+    module("homeassistant.helpers.device_registry", DeviceInfo=dict)
+    module("homeassistant.helpers.dispatcher",
+           async_dispatcher_send=lambda *args: signals.append(args))
+    now = datetime(2026, 9, 24, tzinfo=timezone.utc)
+    module("homeassistant.util", dt=types.SimpleNamespace(utcnow=lambda: now))
+    package = module("contract_component")
+    package.__path__ = [str(SOURCE)]
+    saves = []
+    async def save_store(_hass):
+        saves.append(True)
+    package._async_save_store = save_store
+
+    def load(name):
+        fullname = f"contract_component.{name}"
+        spec = importlib.util.spec_from_file_location(fullname, SOURCE / f"{name}.py")
+        value = importlib.util.module_from_spec(spec)
+        monkeypatch.setitem(sys.modules, fullname, value)
+        spec.loader.exec_module(value)
+        return value
+
+    const = load("const")
+    load("helpers")
+    webhook = load("webhook")
+    entry = types.SimpleNamespace(data={"device_id": "device", "webhook_id": "hook"})
+    hass = types.SimpleNamespace(
+        data={const.DOMAIN: {const.DATA_LAST_SEEN: {}, const.DATA_PENDING_UPDATES: {}}},
+        config_entries=types.SimpleNamespace(async_entries=lambda domain: [entry]),
+    )
+
+    class Request:
+        def __init__(self, payload):
+            self.payload = payload
+
+        async def json(self):
+            return self.payload
+
+    async def send(payload):
+        return await webhook.handle_webhook(hass, "hook", Request(payload))
+
+    return send, hass, const, signals, saves
+
+
+def test_invalid_payload_never_counts_as_heartbeat(webhook_env):
+    send, hass, const, signals, _ = webhook_env
+    for payload in [None, [], {"type": []}, {"type": ["bad"]},
+                    {"type": "update_sensor_states", "data": None},
+                    {"type": "register_sensor", "data": {}},
+                    {"type": "update_sensor_states", "data": {"sensors": [None]}}]:
+        response = asyncio.run(send(payload))
+        assert response.status == 400
+    assert hass.data[const.DOMAIN][const.DATA_LAST_SEEN] == {}
+    assert signals == []
+
+
+def test_valid_empty_update_acknowledges_heartbeat_and_offline_clears_it(webhook_env):
+    send, hass, const, signals, _ = webhook_env
+    response = asyncio.run(send({"type": "update_sensor_states", "data": {
+        "sensors": [], "update_interval": 600,
+    }}))
+    assert response.status == 200 and response.data["success"] is True
+    state = hass.data[const.DOMAIN]
+    assert state[const.DATA_LAST_SEEN]["device"]
+    assert state[const.DATA_UPDATE_INTERVALS]["device"] == 600
+    assert state[const.DATA_AVAILABILITY_STATE]["device"] is True
+
+    response = asyncio.run(send({"type": "device_offline", "data": {}}))
+    assert response.status == 200
+    assert "device" not in state[const.DATA_LAST_SEEN]
+    assert state[const.DATA_AVAILABILITY_STATE]["device"] is False
+    assert signals[-1][-1] is False
+
+
+def test_unchanged_registration_skips_store_write(webhook_env):
+    send, hass, const, signals, saves = webhook_env
+    payload = {"type": "register_sensor", "data": {
+        "sensor_unique_id": "cpu_usage", "sensor_name": "CPU Usage", "sensor_type": "sensor",
+        "sensor_state": 12,
+    }}
+    assert asyncio.run(send(payload)).status == 200
+    assert len(saves) == 1
+    payload["data"]["sensor_state"] = 21
+    assert asyncio.run(send(payload)).status == 200
+    assert len(saves) == 1

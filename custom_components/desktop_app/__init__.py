@@ -20,8 +20,11 @@ from .const import (
     ATTR_WEBHOOK_ID,
     DATA_API_VIEW_REGISTERED,
     DATA_LAST_SEEN,
+    DATA_AVAILABILITY_STATE,
+    DATA_UPDATE_INTERVALS,
     DATA_PENDING_UPDATES,
     DATA_REGISTERED_SENSORS,
+    DATA_LOADED_DEVICES,
     DATA_STORE,
     DOMAIN,
     PLATFORMS,
@@ -58,8 +61,11 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         DATA_STORE: store,
         DATA_API_VIEW_REGISTERED: False,
         DATA_REGISTERED_SENSORS: stored_data.get(DATA_REGISTERED_SENSORS, {}),
+        DATA_LOADED_DEVICES: set(),
         # Phase 3: per-device last-seen timestamps for the availability sensor
         DATA_LAST_SEEN: {},
+        DATA_AVAILABILITY_STATE: {},
+        DATA_UPDATE_INTERVALS: {},
     }
 
     # Register API views directly. The "http" dependency in manifest.json
@@ -127,6 +133,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Forward setup to sensor and binary_sensor platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    hass.data[DOMAIN][DATA_LOADED_DEVICES].add(entry.entry_id)
 
     _LOGGER.info("Desktop App entry set up for device: %s", device_id)
 
@@ -142,29 +149,42 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     registration = entry.data
     webhook_id = registration.get(ATTR_WEBHOOK_ID)
 
+    # Keep the handler alive if unloading a platform fails.
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if not unloaded:
+        return False
+
     # Unregister webhook
     if webhook_id:
         webhook_component.async_unregister(hass, webhook_id)
         hass.data[DOMAIN][DATA_PENDING_UPDATES].pop(webhook_id, None)
+    device_id = registration.get(ATTR_DEVICE_ID)
+    hass.data[DOMAIN][DATA_LAST_SEEN].pop(device_id, None)
+    hass.data[DOMAIN][DATA_AVAILABILITY_STATE].pop(device_id, None)
+    hass.data[DOMAIN][DATA_UPDATE_INTERVALS].pop(device_id, None)
+    hass.data[DOMAIN][DATA_LOADED_DEVICES].discard(entry.entry_id)
 
     # If this was the last entry being unloaded, stop the availability timer.
     from .const import DATA_AVAILABILITY_TIMER
-    if len(hass.config_entries.async_entries(DOMAIN)) <= 1:
+    if not hass.data[DOMAIN][DATA_LOADED_DEVICES]:
         unsub = hass.data[DOMAIN].pop(DATA_AVAILABILITY_TIMER, None)
         if unsub is not None:
             unsub()
 
-    # Unload platforms
-    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    return unloaded
+    return True
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Remove a Desktop App config entry. Nothing to clean up beyond what HA
-    handles itself — device registry, entity registry, and our webhook
-    registration are all torn down by async_unload_entry / HA's removal flow.
-    """
-    return
+    """Remove only this device's persisted sensor metadata."""
+    if entry.data.get("is_hub") or DOMAIN not in hass.data:
+        return
+    device_id = entry.data.get(ATTR_DEVICE_ID)
+    devices = hass.data[DOMAIN].get(DATA_REGISTERED_SENSORS, {})
+    keys = [key for key, value in devices.items() if value.get(ATTR_DEVICE_ID) == device_id]
+    for key in keys:
+        devices.pop(key, None)
+    if keys:
+        await _async_save_store(hass)
 
 
 async def _async_save_store(hass: HomeAssistant) -> None:

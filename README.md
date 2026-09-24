@@ -4,6 +4,8 @@
 
 A custom Home Assistant integration that enables desktop computers to send system sensor data (CPU, GPU, RAM, disk, network, battery) to Home Assistant via webhooks.
 
+HACS metadata requires Home Assistant **2026.9.0 or later** as a conservative floor; minimum-version compatibility still needs a real HA test matrix. Sensor availability varies by OS and installed hardware. Unknown physical readings are unavailable rather than estimated.
+
 ## Features
 
 - **Device Registration**: Desktop apps register via REST API with Long-Lived Access Token authentication
@@ -21,6 +23,7 @@ A custom Home Assistant integration that enables desktop computers to send syste
 2. Add repository URL: `https://github.com/Fill84/ha-integration` and choose type **Integration**
 3. Search for "Desktop App" or "Desktop App Companion" and click **Download**
 4. **Fully restart Home Assistant** (not just "Reload Configuration")
+5. Add the **Desktop App** hub integration in **Settings → Devices & services**
 
 **Verify the integration loaded correctly**
 
@@ -34,10 +37,11 @@ A custom Home Assistant integration that enables desktop computers to send syste
 
 1. Copy the `custom_components/desktop_app/` folder to your Home Assistant `config/custom_components/` directory
 2. Restart Home Assistant
+3. Add the **Desktop App** hub integration in **Settings → Devices & services** so its API views are loaded
 
 ## Setup
 
-This integration is configured automatically when a Desktop Companion App connects. No manual setup is required.
+Add the hub integration once in Home Assistant. Desktop devices and sensor entities are then registered automatically when the app connects.
 
 1. Install the Desktop Companion App on your computer
 2. In the app settings, enter your Home Assistant URL and a Long-Lived Access Token
@@ -53,12 +57,12 @@ This integration is configured automatically when a Desktop Companion App connec
 | CPU Model        | sensor                   | Startup only |
 | GPU Usage        | sensor (%)               | Interval     |
 | GPU Temperature  | sensor (°C)              | Interval     |
-| GPU VRAM Used    | sensor (GB)              | Interval     |
+| GPU VRAM Used    | sensor (MB)              | Interval     |
 | GPU Model        | sensor                   | Startup only |
 | RAM Usage        | sensor (%)               | Interval     |
 | RAM Used         | sensor (GB)              | Interval     |
 | Disk Usage       | sensor (%) per partition | Interval     |
-| Network Speed    | sensor (bytes/s)         | Interval     |
+| Network RX/TX    | sensor (cumulative bytes)| Interval     |
 | Battery Level    | sensor (%)               | Interval     |
 | Battery Charging | binary_sensor            | Interval     |
 | OS Version       | sensor                   | Startup only |

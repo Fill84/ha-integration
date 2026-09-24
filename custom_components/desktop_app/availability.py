@@ -155,8 +155,9 @@ def build_ha_availability_sensor(
             return {"identifiers": {(DOMAIN, self._device_id)}}
 
         async def async_added_to_hass(self) -> None:
-            from .const import SIGNAL_AVAILABILITY_UPDATE
+            from .const import DATA_AVAILABILITY_STATE, DOMAIN, SIGNAL_AVAILABILITY_UPDATE
             await super().async_added_to_hass()
+            self._attr_is_on = self.hass.data[DOMAIN].get(DATA_AVAILABILITY_STATE, {}).get(self._device_id, False)
             self.async_on_remove(
                 async_dispatcher_connect(
                     self.hass,
@@ -185,9 +186,7 @@ def start_availability_timer(hass) -> Callable[[], None]:
     from homeassistant.helpers.event import async_track_time_interval
     from homeassistant.util import dt as dt_util
 
-    from .const import DATA_LAST_SEEN, DOMAIN, SIGNAL_AVAILABILITY_UPDATE
-
-    current_state: dict[str, bool] = {}
+    from .const import DATA_AVAILABILITY_STATE, DATA_LAST_SEEN, DATA_UPDATE_INTERVALS, DOMAIN, SIGNAL_AVAILABILITY_UPDATE
 
     @ha_callback
     def _tick(_now):
@@ -196,6 +195,8 @@ def start_availability_timer(hass) -> Callable[[], None]:
             entry.data.get("device_id"): entry.data.get("update_interval", 60)
             for entry in hass.config_entries.async_entries(DOMAIN)
         }
+        intervals.update(hass.data[DOMAIN].get(DATA_UPDATE_INTERVALS, {}))
+        current_state = hass.data[DOMAIN].setdefault(DATA_AVAILABILITY_STATE, {})
         flips = evaluate_devices(
             last_seen=last_seen,
             update_intervals=intervals,

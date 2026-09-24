@@ -10,6 +10,7 @@ from aiohttp.web import Request, Response, json_response
 
 from homeassistant.components import webhook as webhook_component
 from homeassistant.core import HomeAssistant
+from homeassistant.components.http import KEY_HASS_USER
 from homeassistant.helpers.http import HomeAssistantView
 
 from .const import (
@@ -22,6 +23,7 @@ from .const import (
     ATTR_OS_VERSION,
     ATTR_WEBHOOK_ID,
     DOMAIN,
+    DATA_LOADED_DEVICES,
     EVENT_DESKTOP_APP_UPDATE,
 )
 from .helpers import error_response, registration_response
@@ -102,6 +104,7 @@ class DesktopAppRegistrationView(HomeAssistantView):
     async def post(self, request: Request) -> Response:
         """Handle device registration."""
         hass: HomeAssistant = request.app["hass"]
+        user = request[KEY_HASS_USER]
 
         try:
             data: dict[str, Any] = await request.json()
@@ -114,6 +117,10 @@ class DesktopAppRegistrationView(HomeAssistantView):
                 return error_response(f"Missing required field: {field}", status=400)
 
         device_id = data[ATTR_DEVICE_ID]
+        if not isinstance(device_id, str) or not device_id or len(device_id) > 128:
+            return error_response("Invalid device_id", status=400)
+        if not isinstance(data[ATTR_DEVICE_NAME], str) or not data[ATTR_DEVICE_NAME] or len(data[ATTR_DEVICE_NAME]) > 128:
+            return error_response("Invalid device_name", status=400)
 
         # If a config entry already exists for this device_id, repair its
         # webhook registration (idempotent) and return the same webhook_id.
@@ -125,6 +132,14 @@ class DesktopAppRegistrationView(HomeAssistantView):
                 continue
             if entry.data.get(ATTR_DEVICE_ID) != device_id:
                 continue
+
+            owner_id = entry.data.get("owner_user_id")
+            if owner_id != user.id and not user.is_admin:
+                return error_response("Device is registered to another user", status=403)
+            if entry.entry_id not in hass.data.get(DOMAIN, {}).get(DATA_LOADED_DEVICES, set()):
+                return error_response("Device entry is not loaded yet", status=503)
+            if owner_id is None:
+                hass.config_entries.async_update_entry(entry, data={**entry.data, "owner_user_id": user.id})
 
             webhook_id = entry.data[ATTR_WEBHOOK_ID]
             device_name = entry.data.get(ATTR_DEVICE_NAME, "Desktop App")
@@ -141,9 +156,8 @@ class DesktopAppRegistrationView(HomeAssistantView):
                 )
 
             _LOGGER.info(
-                "Device %s already registered; reused webhook %s after defensive re-register",
+                "Device %s already registered; reused webhook after defensive re-register",
                 device_id,
-                webhook_id[:8] + "…",
             )
             return registration_response(webhook_id)
 
@@ -153,6 +167,7 @@ class DesktopAppRegistrationView(HomeAssistantView):
             ATTR_DEVICE_ID: device_id,
             ATTR_DEVICE_NAME: data[ATTR_DEVICE_NAME],
             ATTR_WEBHOOK_ID: webhook_id,
+            "owner_user_id": user.id,
         }
         for field in REGISTRATION_SCHEMA_OPTIONAL:
             if field in data:
@@ -172,9 +187,8 @@ class DesktopAppRegistrationView(HomeAssistantView):
             return registration_response(webhook_id)
 
         _LOGGER.error(
-            "Failed to create config entry for device %s; flow returned: %s",
+            "Failed to create config entry for device %s",
             device_id,
-            result,
         )
         return error_response("Failed to register device", status=500)
 
