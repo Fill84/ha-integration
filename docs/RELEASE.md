@@ -11,3 +11,5 @@ Voorbereiding van 1.0.11:
 5. Installeer via HACS bovenop een bestaande 1.0.10-installatie, herstart HA en controleer de bestaande entity-ID's en automatiseringen. Publiceer de desktoprelease pas met de geteste integratiecommit.
 
 De volgorde, installatiekeuzes en rollback voor gebruikers staan in [INSTALLATION.md](INSTALLATION.md). Dit document autoriseert geen voortijdige push of release.
+
+Uitgevoerd op 25 september 2026: integratiecommit `62caf861c87b82360bb054681db0fb685650d67d` is als [1.0.11](https://github.com/Fill84/ha-integration/releases/tag/1.0.11) gepubliceerd. HACS bood de update van 1.0.10 naar 1.0.11 aan; na download en HA-herstart op `render-unit` bleven 109 entity-ID-/unique-ID-/config-entry-combinaties behouden en beide Windows-clients leverden verse CPU-metingen. Desktoprelease [1.0.5](https://github.com/Fill84/HA-Companion-App/releases/tag/1.0.5) is daarna met de exacte installer op beide pc's getest en gepubliceerd. macOS-/Linux-runtimeproeven en enkele Windows-randgevalproeven blijven open en staan in de releasenotities.

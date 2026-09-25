@@ -2,7 +2,7 @@
 
 This repository contains the Home Assistant custom integration for the [Home Assistant Companion desktop app](https://github.com/Fill84/HA-Companion-App). It receives device registration through an authenticated API and sensor updates through per-device webhooks. The integration keeps registered entity identifiers across upgrades and marks missing live readings unavailable.
 
-The current source manifest is **1.0.11**. A source version is not a published HACS update: install the latest *published* integration release shown by HACS. Home Assistant 2026.9.0 is the declared minimum, pending a real-version compatibility matrix.
+Version **1.0.11** is [published for HACS](https://github.com/Fill84/ha-integration/releases/tag/1.0.11). Its upgrade from HACS 1.0.10 was tested on Home Assistant 2026.9.3 with two connected Windows desktops and all 109 existing Desktop App entity identities preserved. Home Assistant 2026.9.0 remains the declared minimum; other versions have not yet been tested in a compatibility matrix.
 
 ## Install and upgrade
 

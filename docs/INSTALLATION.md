@@ -15,6 +15,7 @@ Handmatige installatie: kopieer uitsluitend `custom_components/desktop_app/` uit
 ## Desktopapp op Windows
 
 1. Download de Windows **NSIS-installer** van de bijbehorende, gepubliceerde desktoprelease. Een lokaal `target/`-bestand of een oude 1.0.4-installer is geen nieuwe release. Controleer de versie en de SHA-256 tegen het release-manifest. Een publiek installatiebestand moet door de releasepoort zijn gegaan.
+   Versie 1.0.5 is [hier gepubliceerd](https://github.com/Fill84/HA-Companion-App/releases/tag/1.0.5) voor Windows x64. De app en installer zijn ongetekend; Windows kan **Onbekende uitgever** of een SmartScreen-waarschuwing tonen. De meegeleverde PawnIO-driver heeft een eigen leveranciershandtekening. Controleer de SHA-256 op de releasepagina voordat je de installer uitvoert.
 2. Start de installer met administratorrechten; het installatiedoel is per machine. De installer kan de Microsoft WebView2-bootstrapper downloaden als WebView2 ontbreekt, dus daarvoor is internet nodig.
 3. De installer installeert standaard de meegeleverde, ondertekende PawnIO-driver en de eigen Rust-sensorservice als onderdeel van de Windows-app. Er is geen aparte sensorapp, .NET-helper of tweede keuze in de app-instellingen nodig. Een niet-ondersteunde CPU of ontbrekende driver levert `unknown` op in plaats van een geschatte temperatuur.
 4. Start de app als normale gebruiker. Vul de basis-URL van HA zonder `/api` en een persoonlijk *Long-Lived Access Token* in. De app bewaart het token in de OS-kluis en registreert het apparaat via de geauthenticeerde HA-API. Bewaar of deel het token niet in screenshots of logs.
@@ -24,7 +25,7 @@ Bij een upgrade blijven de configuratie, het bestaande apparaat en de entity-ID'
 
 ## Andere desktopplatformen
 
-Linux en macOS lezen beschikbare OS-/hardwarebronnen zonder Windows-driver. De code bevat deze paden, maar deze releasekandidaat heeft nog geen fysieke macOS-/Linux-installatieproef. Gebruik pas een als ondersteund gepubliceerde build nadat de platformproeven zijn vastgelegd. Niet alle hardware publiceert alle sensoren.
+Linux en macOS lezen beschikbare OS-/hardwarebronnen zonder Windows-driver. Versie 1.0.5 bevat een macOS Apple Silicon-DMG en Linux x86_64-pakketten. Deze zijn gebouwd en automatisch getest, maar een interactieve installatie en sensor-naar-HA-proef ontbreekt nog; ze hebben daarom nog geen gelijkwaardige runtimevalidatie als Windows. Intel-Mac- en Linux-ARM64-installers zijn niet meegeleverd. Niet alle hardware publiceert alle sensoren.
 
 ## Uptime en beschikbaarheid
 
