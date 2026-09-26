@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.12
+
+- Let each desktop create its own Home Assistant device entry through the authenticated config-flow API; a placeholder hub is no longer needed.
+- Hide the integration from the manual Add flow, which cannot add a desktop without the desktop app.
+- Preserve existing device entries, webhook IDs, and entity IDs during the upgrade.
+- Recover the existing webhook ID when a desktop retries an interrupted first registration.
+
 ## 1.0.11
 
 - Preserve existing desktop device and entity IDs during sensor refresh and recovery.

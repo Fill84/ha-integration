@@ -7,8 +7,8 @@ Deze integratie bestaat uit twee **afzonderlijke** onderdelen: de Home Assistant
 1. Maak een back-up van je HA-configuratie. Bestaande apparaat- en entity-ID's moeten bij de upgrade behouden blijven.
 2. Voeg `https://github.com/Fill84/ha-integration` in HACS toe als **Integration** onder *Custom repositories*. Staat de repository er al, open dan de bestaande HACS-installatie.
 3. Kies de nieuwste **gepubliceerde, stabiele** versie en laat HACS de integratie downloaden. Een lokale commit of manifestversie die nog niet naar deze repository is gepusht, verschijnt niet als update.
-4. Herstart Home Assistant volledig. Voeg daarna onder *Instellingen → Apparaten en diensten → Integratie toevoegen* eenmaal **Desktop App** toe als hub, als deze nog niet bestaat. Verwijder bestaande apparaatentries niet om een update af te dwingen.
-5. Controleer in een browser `https://<jouw-ha-host>/api/desktop_app/ping`. Een HTTP 200-antwoord bevestigt dat de integratie-API geladen is; het bewijst nog geen werkende desktopregistratie.
+4. Herstart Home Assistant volledig zodat de nieuwe custom integration beschikbaar is. Met integratie 1.0.12 en desktopapp 1.0.6 hoef je geen lege **Desktop App**-hub meer toe te voegen: open de desktopapp en verbind deze met HA. Voor de **eerste** computer is een HA-beheerderstoken nodig, omdat HA alleen beheerders een config entry laat maken. De desktop maakt zijn eigen apparaat-entry en webhook aan. Volgende computers kunnen zich op dezelfde manier aanmelden. De reeds gepubliceerde integratie 1.0.11 werkt nog volgens de oude hubstap; volg de instructies van die release totdat 1.0.12 gepubliceerd is.
+5. Controleer onder *Instellingen → Apparaten en diensten → Desktop App* of uitsluitend echte computers staan en de sensoren verse waarden ontvangen. `/api/desktop_app/ping` kan na de eerste aanmelding pas na een HA-herstart beschikbaar zijn; de app gebruikt tot die tijd de ingebouwde HA-webhookroute. HTTP 200 op die ping is geen bewijs voor sensorupdates.
 
 Handmatige installatie: kopieer uitsluitend `custom_components/desktop_app/` uit een gecontroleerde integratierelease naar `<config>/custom_components/desktop_app/`, en voer daarna stap 4–5 uit. Meng geen losse bestanden uit verschillende versies.
 
@@ -33,7 +33,7 @@ Linux en macOS lezen beschikbare OS-/hardwarebronnen zonder Windows-driver. Vers
 
 ## Herstel en rollback
 
-- **Ping 404:** controleer of de hub-integratie geladen is, of HA volledig is herstart, en of de URL van HA klopt.
+- **Ping 404:** vóór de eerste aanmelding en totdat HA na die aanmelding herstart is, kan de compatibiliteits-API ontbreken. De nieuwe desktop gebruikt dan HA's ingebouwde config-flow- en webhook-API. Controleer of de integratie via HACS geïnstalleerd is, HA na installatie herstart is en de basis-URL klopt.
 - **Registratie 401/403:** controleer het persoonlijke token en, bij een bestaand apparaat, de eigenaar van de HA-registratie. Een andere gewone HA-gebruiker mag de bestaande webhook niet overnemen. Een oude registratie zonder eigenaar moet één keer met een HA-beheerderstoken aan een eigenaar worden gekoppeld; behoud daarbij de bestaande device-ID en webhook.
 - **Online, maar geen temperatuur:** controleer de Windows-sensordiensten en de `provider_status`- en `measurement_source`-attributen. Een niet-ondersteunde CPU krijgt geen geschatte temperatuur.
 - **HACS biedt geen nieuwe versie:** controleer of er daadwerkelijk een hogere, gepubliceerde versie in `Fill84/ha-integration` bestaat. De desktoprelease alleen is onvoldoende.

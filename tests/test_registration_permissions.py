@@ -36,7 +36,7 @@ def test_existing_device_requires_owner_or_admin(monkeypatch):
 
     module("homeassistant.helpers.http", HomeAssistantView=HomeAssistantView)
     async def async_get_integration(_hass, _domain):
-        return types.SimpleNamespace(version="1.0.11")
+        return types.SimpleNamespace(version="1.0.12")
     module("homeassistant.loader", async_get_integration=async_get_integration)
     package = module("permission_component")
     package.__path__ = [str(SOURCE)]
@@ -86,7 +86,7 @@ def test_existing_device_requires_owner_or_admin(monkeypatch):
     view = api.DesktopAppRegistrationView()
     version = asyncio.run(view.get(Request("alice")))
     assert version.status == 200
-    assert version.data["integration_version"] == "1.0.11"
+    assert version.data["integration_version"] == "1.0.12"
     assert "registration API" in version.data["message"]
     for invalid in (
         [],

@@ -69,18 +69,18 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         DATA_UPDATE_INTERVALS: {},
     }
 
-    # Register API views directly. The "http" dependency in manifest.json
-    # guarantees that hass.http is available at this point. Views MUST be
-    # registered here (synchronously during setup) — registering later via
-    # callbacks would fail because the aiohttp router is frozen after startup.
-    hass.http.register_view(DesktopAppPingView())
-    hass.http.register_view(DesktopAppPingViewWithSlash())
-    hass.http.register_view(DesktopAppRegistrationView())
-    hass.data[DOMAIN][DATA_API_VIEW_REGISTERED] = True
-    _LOGGER.info(
-        "Registered Desktop App API at /api/desktop_app/registrations, "
-        "/api/desktop_app/ping"
-    )
+    # The first desktop can create its entry after HA has started through
+    # HA's built-in config-flow API. At that point aiohttp's router is frozen;
+    # the built-in webhook route still accepts dynamic registrations. Our
+    # compatibility API becomes available on the next HA start.
+    if not hass.http.app.router.frozen:
+        hass.http.register_view(DesktopAppPingView())
+        hass.http.register_view(DesktopAppPingViewWithSlash())
+        hass.http.register_view(DesktopAppRegistrationView())
+        hass.data[DOMAIN][DATA_API_VIEW_REGISTERED] = True
+        _LOGGER.info("Registered Desktop App compatibility API")
+    else:
+        _LOGGER.info("Desktop App loaded after HTTP startup; using HA's webhook API")
 
     return True
 

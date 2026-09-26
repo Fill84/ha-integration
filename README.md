@@ -6,7 +6,7 @@ Version **1.0.11** is [published for HACS](https://github.com/Fill84/ha-integrat
 
 ## Install and upgrade
 
-Read the [installation, upgrade, dashboard and rollback guide](docs/INSTALLATION.md). In brief: add `https://github.com/Fill84/ha-integration` as a HACS custom **Integration** repository, install the latest published release, fully restart Home Assistant, and add the **Desktop App** hub integration once under Devices & services. Then install and connect the matching desktop release. Do not remove an existing integration entry or device during an upgrade.
+Read the [installation, upgrade, dashboard and rollback guide](docs/INSTALLATION.md). In brief: add `https://github.com/Fill84/ha-integration` as a HACS custom **Integration** repository, install the compatible release, and fully restart Home Assistant. Version 1.0.12 lets each 1.0.6 desktop create its own HA device entry with an administrator token; no empty hub or manual Add action is needed. The published 1.0.11 integration still requires the documented hub activation until 1.0.12 is released. Preserve existing device entries and entity IDs during upgrades.
 
 The desktop app registers sensors before sending state batches. It sends wire protocol version 1; older desktop clients that omit the version remain supported. See the [protocol reference](docs/PROTOCOL.md) for endpoints, payloads and error behavior. The numeric `system_uptime` state stays in seconds for automations and statistics. Its `human_readable` attribute can be shown in a dashboard Entities card without changing the entity ID.
 

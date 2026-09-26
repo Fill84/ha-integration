@@ -2,12 +2,14 @@
     "config": {
         "step": {
             "user": {
-                "title": "Desktop App",
-                "description": "Click Submit to activate the Desktop App integration. Once active, devices can register via the Desktop Companion App."
+                "title": "Desktop Companion registration",
+                "description": "Open Desktop Companion on your computer to register it with Home Assistant."
             }
         },
         "abort": {
-            "already_configured": "The Desktop App integration is already active."
+            "already_configured": "This computer is already registered.",
+            "already_registered": "This computer is already registered.",
+            "register_from_desktop": "Open Desktop Companion on your computer to register it with Home Assistant."
         }
     }
 }
